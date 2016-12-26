@@ -3,6 +3,7 @@
  *  Enables autonomous driving of a 2 or 4 wheel car with an Arduino and a Adafruit Motor Shield V2.
  *  To avoid obstacles a HC-SR04 Ultrasonic sensor mounted on a SG90 Servo continuously scans the area.
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
+ *  Just overwrite the 2 functions fillForwardDistancesInfoSimple() and doCollisionDetectionSimple() to test your own skill.
  *
  *  Copyright (C) 2016  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
@@ -26,29 +27,23 @@
 
 #include "EncoderMotorControl.h"
 
-// Pin 13 has an LED connected on most Arduino boards.
-const int LED_PIN = 13;
+#include "digitalWriteFast.h"
+#define digitalToggleFast(P) BIT_SET(* &PINB, __digitalPinToBit(P))
 
-// if connected to ground we have a 2 WD CAR
-const int TWOWD_DETECTION_PIN = 12;
+/*
+ * Servo + US stuff
+ */
+// must not be constant, since then we get an undefined reference error at link time,
+// since they are referenced by getUSDistanceAsCentiMeterWithCentimeterTimeoutNonBlocking()
+uint8_t ECHO_IN_PIN = A1;
+uint8_t TRIGGER_OUT_PIN = A0;
 
-// Must use pin 3 and 4 on Arduino, since they are connected to INT0 and INT1
-const int DISTANCE_SENSOR_LEFT_PIN = 3;
-const int DISTANCE_SENSOR_RIGHT_PIN = 4;
+//Servo sServoUS;
 
 /*
  * Car Control
  */
 CarControl myCar;
-
-/*
- * Servo + US stuff
- */
-// must not be constant, since then we get an undefined reference error at link time
-uint8_t ECHO_IN_PIN = A1;
-uint8_t TRIGGER_OUT_PIN = A0;
-
-Servo sServoUS;
 
 #define CENTIMETER_PER_RIDE 20
 
@@ -58,6 +53,7 @@ Servo sServoUS;
 void setup() {
 // initialize the digital pin as an output.
     pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);
 
     /*
      * For slot type optocoupler interrupts on pin PD2 + PD3
@@ -66,15 +62,15 @@ void setup() {
     pinMode(DISTANCE_SENSOR_LEFT_PIN, INPUT);
 
     pinMode(TRIGGER_OUT_PIN, OUTPUT);
-    pinMode(ECHO_IN_PIN, INPUT);
+    pinMode(DEBUG1_PIN, OUTPUT);
 
     EncoderMotorControl::enableInterruptOnRisingSlope(INT0);
     EncoderMotorControl::enableInterruptOnRisingSlope(INT1);
     EncoderMotorControl::EnableValuesPrint = true;
 
-    sServoUS.attach(10);
-    sLastServoAngleInDegree = 90;
-    ServoWrite(sServoUS, sLastServoAngleInDegree);
+    initSimpleServoPin9_10();
+    //sServoUS.attach(SERVO_CONTROL_PIN);
+    ServoWrite(90, false);
 
 // initialize motors
     myCar.init(TWOWD_DETECTION_PIN);
@@ -83,51 +79,82 @@ void setup() {
     resetPathData();
 
     setupGUI();
+
 }
 
 void loop() {
+    digitalToggleFast(LED_PIN);
+    if (!BlueDisplay1.mConnectionEstablished) {
+        if (millis() > 15000) {
+            /*
+             * Start automatically if no Bluetooth connection
+             */
+            doStartStopAutomomousDrive(NULL, false);
+        }
+    }
 
+    /*
+     * check for user input
+     */
     loopGUI();
 
-    if (sActualPage == PAGE_MANUAL_CONTROL) {
-        if (sRunManual) {
-            /*
-             * Direct control by GUI
-             */
-            myCar.updateMotors();
-            myCar.rightMotorControl.syncronizeMotor(&myCar.leftMotorControl, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+    if (sActualPage == PAGE_MANUAL_CONTROL && sStarted) {
+        /*
+         * Direct control by GUI
+         */
+        myCar.updateMotors();
+        myCar.rightMotorControl.syncronizeMotor(&myCar.leftMotorControl, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+    }
+
+    /*
+     * Test loops
+     */
+    if (sRunOwnTest || sRunAutonomousDrive) {
+        bool (*tfillForwardDistancesInfoFunction)(ForwardDistancesInfoStruct*, bool, bool);
+        int (*tCollisionDetectionFunction)(ForwardDistancesInfoStruct*);
+        if (sRunOwnTest) {
+            tfillForwardDistancesInfoFunction = &fillForwardDistancesInfoMyOwn;
+            tCollisionDetectionFunction = &doMyOwnCollisionDetection;
+        } else {
+            tfillForwardDistancesInfoFunction = &fillForwardDistancesInfo;
+            tCollisionDetectionFunction = &doCollisionDetectionPro;
         }
-        checkAndShowDistancePeriodically(sGetDistancePeriod);
-    }
-    /*
-     * Test loop 1
-     */
-    if (sRunTestSimple) {
-        driveAutonomous(&sRunTestSimple, &fillForwardDistancesInfoSimple, &doCollisionDetectionSimple);
-    }
-    /*
-     * Test loop 2
-     */
-    if (sRunTestPro) {
-        driveAutonomous(&sRunTestPro, &fillForwardDistancesInfoPro, &doCollisionDetectionPro);
+        EncoderMotorControl::EnableValuesPrint = false;
+        while (sRunAutonomousDrive || sRunOwnTest) {
+            driveAutonomous(tfillForwardDistancesInfoFunction, tCollisionDetectionFunction);
+            /*
+             * check for user input.
+             */
+            loopGUI();
+        }
+        /*
+         * End of test loops. myCar.isStopped() is true here
+         */
+        if (sStepMode != MODE_SINGLE_STEP) {
+            // add last driven distance to path
+            insertToPath(myCar.rightMotorControl.LastRideDistanceCount, sLastDegreeTurned, true);
+        }
+
+        EncoderMotorControl::EnableValuesPrint = true;
+        ServoWrite(90, false);
     }
 }
 
 /*
  * Get 9 distances starting at 0 degree (right) increasing by 20 degree up to 180 degree (left)
  */
-bool fillForwardDistancesInfoSimple(ForwardDistancesInfoStruct* aForwardDistancesInfo, Servo aServoForUS, bool aShowValues,
+bool fillForwardDistancesInfoMyOwn(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues,
 bool aDoFirstValue) {
     int tDegree = 0;
-    aForwardDistancesInfo->MaxDistance = 0;
-    aForwardDistancesInfo->MinDistance = 255;
-    aForwardDistancesInfo->IndexOfMaxDistance = 0;
-    aForwardDistancesInfo->IndexOfMinDistance = 0;
     int tDelay = 600;
-    for (int i = 0; i < 7; ++i) {
-        sServoUS.write(tDegree);
+    for (int i = 0; i < NUMBER_OF_DISTANCES; ++i) {
+        if (myCar.is2WDCar) {
+            // My servo on the 2WD car is top down and therefore inverted
+            tDegree = 180 - tDegree;
+        }
+        setSimpleServoPulsePin10(tDegree);
         delay(tDelay);
-        tDelay = 120;
+        tDelay = 100;
         unsigned int tActualDistance = getUSDistanceAsCentiMeter();
         /*
          * Get 9 Distances & Check for Max and Min distances
@@ -135,14 +162,6 @@ bool aDoFirstValue) {
          */
         aForwardDistancesInfo->RawDistancesArray[i] = tActualDistance;
         tDegree += DEGREE_PER_STEP;
-        if (tActualDistance > aForwardDistancesInfo->MaxDistance) {
-            aForwardDistancesInfo->MaxDistance = tActualDistance;
-            aForwardDistancesInfo->IndexOfMaxDistance = i;
-        }
-        if (tActualDistance < aForwardDistancesInfo->MinDistance) {
-            aForwardDistancesInfo->MinDistance = tActualDistance;
-            aForwardDistancesInfo->IndexOfMinDistance = i;
-        }
     }
     return false;
 }
@@ -151,8 +170,8 @@ bool aDoFirstValue) {
  * Checks distances and returns degree to turn
  * 0 -> no turn, >0 -> turn left, <0 -> turn right
  */
-int doCollisionDetectionSimple(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
-    // if left three distances are all less than 21 centimeter then turn right.
+int doMyOwnCollisionDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
+// if left three distances are all less than 21 centimeter then turn right.
     if (aForwardDistancesInfo->ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
             && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 1] <= MINIMUM_DISTANCE_TO_SIDE
             && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 2] <= MINIMUM_DISTANCE_TO_SIDE) {

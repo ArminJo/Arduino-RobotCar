@@ -154,8 +154,9 @@ struct Swipe {
     uint16_t TouchDeltaAbsMax; // max of TouchDeltaXAbs and TouchDeltaYAbs to easily decide if swipe is large enough to be accepted
 };
 
-union ShortLongFloatUnion {
-    uint16_t Int16Value;
+union ByteShortLongFloatUnion {
+    unsigned char ByteValues[4];
+    uint16_t Int16Values[2];
     uint32_t Int32Value;
     float FloatValue;
 };
@@ -163,13 +164,13 @@ union ShortLongFloatUnion {
 struct GuiCallback {
     uint16_t ObjectIndex;
     uint16_t Free;
-#ifndef AVR
-    void * Handler;
-#else
+#ifdef AVR
     void * Handler;
     void * Handler_upperWord; // not used on  <= 17 bit address cpu, since pointer to functions are address_of_function >> 1
+#else
+    void * Handler;
 #endif
-    union ShortLongFloatUnion ValueForHandler;
+    union ByteShortLongFloatUnion ValueForGuiHandler;
 };
 
 struct SensorCallback {
@@ -179,11 +180,16 @@ struct SensorCallback {
 };
 
 struct IntegerInfoCallback {
-    uint16_t SubFunction;
-    uint16_t Special;
+    uint8_t SubFunction;
+    uint8_t ByteInfo;
+    uint16_t ShortInfo;
+#ifdef AVR
     void * Handler;
-    uint16_t Int16Value1;
-    uint16_t Int16Value2;
+    void * Handler_upperWord; // not used on  <= 17 bit address cpu, since pointer to functions are address_of_function >> 1
+#else
+    void * Handler;
+#endif
+    union ByteShortLongFloatUnion LongInfo;
 };
 
 struct BluetoothEvent {
@@ -192,6 +198,7 @@ struct BluetoothEvent {
         unsigned char ByteArray[RECEIVE_MAX_DATA_SIZE]; // To copy data from input buffer
         struct TouchEvent TouchEventInfo; // for EVENT_TOUCH_ACTION_*
         struct XYSize DisplaySize;
+        uint32_t UnixTimestamp;
         struct DisplaySizeAndUnixTimestamp DisplaySizeAndTimestamp;
         struct GuiCallback GuiCallbackInfo; // EVENT_*_CALLBACK
         struct Swipe SwipeInfo;
@@ -239,7 +246,8 @@ static const int FUNCTION_GET_NUMBER = 0x0C;
 static const int FUNCTION_GET_TEXT = 0x0D;
 static const int FUNCTION_GET_INFO = 0x0E;
 // Sub functions for FUNCTION_GET_INFO
-static const int SUBFUNCTION_GET_INFO_ = 0x00;
+static const int SUBFUNCTION_GET_INFO_LOCAL_TIME = 0x00;
+static const int SUBFUNCTION_GET_INFO_UTC_TIME = 0x01;
 
 static const int FUNCTION_PLAY_TONE = 0x0F;
 
@@ -266,6 +274,9 @@ const int FUNCTION_FILL_RECT = 0x27;
 
 const int FUNCTION_DRAW_CIRCLE = 0x28;
 const int FUNCTION_FILL_CIRCLE = 0x29;
+
+const int FUNCTION_DRAW_VECTOR_DEGREE = 0x2C;
+const int FUNCTION_DRAW_VECTOR_RADIAN = 0x2D;
 
 const int FUNCTION_WRITE_SETTINGS = 0x34;
 // Flags for WRITE_SETTINGS
@@ -317,7 +328,7 @@ const int FUNCTION_BUTTON_GLOBAL_SETTINGS = 0x4A;
 
 // Function with variable data size
 const int FUNCTION_BUTTON_CREATE = 0x70;
-
+const int FUNCTION_BUTTON_SET_CAPTION_FOR_VALUE_TRUE = 0x71;
 const int FUNCTION_BUTTON_SET_CAPTION = 0x72;
 const int FUNCTION_BUTTON_SET_CAPTION_AND_DRAW_BUTTON = 0x73;
 

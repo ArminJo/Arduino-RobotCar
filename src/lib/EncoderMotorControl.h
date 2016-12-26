@@ -40,7 +40,13 @@
 #define MOTOR_STATE_FULL_SPEED 2
 #define MOTOR_STATE_RAMP_DOWN 3
 
-#define MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS 500
+//#define MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS 500
+#define MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS 100
+
+#define SERVO_CURRENT_LOW_THRESHOLD 100
+#define SERVO_INITIAL_DELAY 5
+
+#define SERVO_CURRENT_LOW_MILLIS_FOR_SERVO_STOPPED 12
 
 struct EepromMotorInfoStruct {
     uint8_t MinSpeed;
@@ -53,7 +59,7 @@ class EncoderMotorControl {
 public:
 
     EncoderMotorControl();
-    virtual ~EncoderMotorControl();
+//    virtual ~EncoderMotorControl();
 
     void init(Adafruit_DCMotor * aDCMotor);
 
@@ -144,7 +150,7 @@ public:
      */
     uint8_t MinSpeed;
     /*
-     * minimum speed to approach target count in order to be able to stop fast
+     * minimum speed to approach target count in order to be able to stop fast - actually set to MinSpeed
      */
     uint8_t StopSpeed;
     // maximum speed - TODO 0xFF should be working
@@ -165,12 +171,11 @@ public:
     uint8_t State;
     uint16_t TargetDistanceCount;
     uint16_t LastTargetDistanceCount;
-    // count of last ride (from start of MOTOR_STATE_RAMP_UP to MOTOR_STATE_STOPPED)
-    // TODO count ticks happening after stopping motors
+    // count of last ride - from start of MOTOR_STATE_RAMP_UP to next MOTOR_STATE_RAMP_UP
     uint16_t LastRideDistanceCount;
 
     /*
-     * Distance optocoupler impulse counter
+     * Distance optocoupler impulse counter. is reseted at initGoDistanceCount if motor was stopped.
      */
     volatile uint16_t DistanceCount;
     // used for debouncing and lock/timeout  detection

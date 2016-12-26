@@ -62,7 +62,7 @@ void resetTouchFlags(void);
 
 extern struct BluetoothEvent remoteEvent;
 #ifdef AVR
-// Second event buffer for simple serial to avoid overwriting fast events
+// Serves also as second buffer for regular events to avoid overwriting of touch down events if CPU is busy and interrupt in not enabled
 extern struct BluetoothEvent remoteTouchDownEvent;
 #endif
 

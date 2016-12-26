@@ -2,6 +2,10 @@
  * EncoderMotorControl.cpp
  *
  *  Functions for controlling a DC-motor which rotary encoder attached.
+ *  Generates ramps for acceleration and deceleration and tries to stop at target distance.
+ *  This enables deterministic turns for 2-Wheel Cars.
+ *  For 4-Wheel cars it is impossible go get deterministic turns, therefore I use approximated thumb values.
+ *
  *  Needs Adafruit_MotorShield.cpp
  *
  *  Created on: 16.09.2016
@@ -47,8 +51,8 @@ EncoderMotorControl::EncoderMotorControl() {
     }
 }
 
-EncoderMotorControl::~EncoderMotorControl() {
-}
+//EncoderMotorControl::~EncoderMotorControl() {
+//}
 
 void EncoderMotorControl::init(Adafruit_DCMotor * aDCMotor) {
     DCMotor = aDCMotor;
@@ -67,6 +71,7 @@ void EncoderMotorControl::updateMotor() {
         if (TargetDistanceCount > 0) {
             //  --> RAMP_UP
             State = MOTOR_STATE_RAMP_UP;
+            LastRideDistanceCount = 0;
             /*
              * Start motor
              */
@@ -282,10 +287,6 @@ void EncoderMotorControl::calibrate() {
         tEncoderMotorControlPointer = sMotorControlListStart;
         endLoop = true;
         while (tEncoderMotorControlPointer != NULL) {
-            // debug
-//            if (tEncoderMotorControlPointer->Debug == 0 && tEncoderMotorControlPointer->DistanceCount > 1) {
-//                tEncoderMotorControlPointer->Debug = i;
-//            }
             /*
              * Store speed after 6 counts (3cm)
              */
@@ -301,6 +302,7 @@ void EncoderMotorControl::calibrate() {
         }
 
         printMotorValues();
+        printMotorDebugValues();
 
         if (endLoop) {
             break;
@@ -402,19 +404,19 @@ void EncoderMotorControl::readEeprom() {
     if (tEepromMotorInfo.MinSpeed < 100) {
         MinSpeed = tEepromMotorInfo.MinSpeed;
     } else {
-        MinSpeed = 20;
+        MinSpeed = 45;
     }
     if (tEepromMotorInfo.StopSpeed < 120 && tEepromMotorInfo.StopSpeed > 10) {
         StopSpeed = tEepromMotorInfo.StopSpeed;
     } else {
-        StopSpeed = 40;
+        StopSpeed = 50;
     }
-    if (tEepromMotorInfo.MaxSpeed < 0x40) {
-        MaxSpeed = 128;
+    if (tEepromMotorInfo.MaxSpeed < 50) {
+        MaxSpeed = 80;
     } else {
         MaxSpeed = tEepromMotorInfo.MaxSpeed;
     }
-    if (tEepromMotorInfo.SpeedCompensation < 0x18) {
+    if (tEepromMotorInfo.SpeedCompensation < 24) {
         SpeedCompensation = tEepromMotorInfo.SpeedCompensation;
     } else {
         SpeedCompensation = 0;
@@ -442,6 +444,7 @@ void EncoderMotorControl::handleEncoderInterrupt() {
     } else {
         DistanceTickLastMillis = tMillis;
         DistanceCount++;
+        LastRideDistanceCount++;
         ActualVelocity = VELOCITY_SCALE_VALUE / tDeltaMillis;
         DistanceTickCounterHasChanged = true;
     }
@@ -538,7 +541,6 @@ void EncoderMotorControl::setSpeedCompensated(uint8_t aRequestedSpeed) {
         ActualSpeed = 0;
         State = MOTOR_STATE_STOPPED;
         TargetDistanceCount = 0;
-        LastRideDistanceCount = DistanceCount;
     } else if (aRequestedSpeed > SpeedCompensation) {
         ActualSpeed = aRequestedSpeed - SpeedCompensation;
     } else {

@@ -49,7 +49,7 @@ BDSlider::BDSlider(BDSliderHandle_t aSliderHandle, TouchSlider * aLocalSliderPoi
  * @brief initialization with all parameters (except BarBackgroundColor)
  * @param aPositionX - Determines upper left corner
  * @param aPositionY - Determines upper left corner
- * Only ext 2 values are physical values in pixel
+ * Only next 2 values are physical values in pixel
  * @param aBarWidth - Width of bar (and border) in pixel - no scaling!
  * @param aBarLength - Size of slider bar in pixel = maximum slider value - no scaling!
  * @param aThresholdValue - Scaling! If selected or sent value is bigger, then color of bar changes from BarColor to BarBackgroundColor

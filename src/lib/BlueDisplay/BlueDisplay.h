@@ -96,6 +96,7 @@ typedef uint16_t Color_t; // is needed in EventHandler.h
 #define TEXT_SIZE_11 11
 // for factor 2 of 8*12 font
 #define TEXT_SIZE_22 22
+#define TEXT_SIZE_26 26
 // for factor 3 of 8*12 font
 #define TEXT_SIZE_33 33
 // for factor 4 of 8*12 font
@@ -274,10 +275,10 @@ constexpr int ButtonWidth ( int aNumberOfButtonsPerLine, int aDisplayWidth ) {re
 //
 // for 5 buttons vertical and DISPLAY_HEIGHT 256
 #define BUTTON_HEIGHT_5_256 39
-#define BUTTON_HEIGHT_5_256_LINE_2 (BUTTON_HEIGHT_5 + BUTTON_DEFAULT_SPACING)
-#define BUTTON_HEIGHT_5_256_LINE_3 (2*(BUTTON_HEIGHT_5 + BUTTON_DEFAULT_SPACING))
-#define BUTTON_HEIGHT_5_256_LINE_4 (3*(BUTTON_HEIGHT_5 + BUTTON_DEFAULT_SPACING))
-#define BUTTON_HEIGHT_5_256_LINE_5 (LAYOUT_256_HEIGHT - BUTTON_HEIGHT_5)
+#define BUTTON_HEIGHT_5_256_LINE_2 (BUTTON_HEIGHT_5_256 + BUTTON_DEFAULT_SPACING)
+#define BUTTON_HEIGHT_5_256_LINE_3 (2*(BUTTON_HEIGHT_5_256 + BUTTON_DEFAULT_SPACING))
+#define BUTTON_HEIGHT_5_256_LINE_4 (3*(BUTTON_HEIGHT_5_256 + BUTTON_DEFAULT_SPACING) -1)
+#define BUTTON_HEIGHT_5_256_LINE_5 (LAYOUT_256_HEIGHT - BUTTON_HEIGHT_5_256)
 //
 // for 5 buttons vertical and variable display height
 #define BUTTON_HEIGHT_5_DYN (sActualDisplayHeight/5 - BUTTON_VERTICAL_SPACING_DYN)
@@ -338,8 +339,12 @@ static const int FLAG_BUTTON_GLOBAL_SET_BEEP_TONE = 0x02;
 //old
 static const int BUTTON_FLAG_NO_BEEP_ON_TOUCH = 0x00;
 static const int BUTTON_FLAG_DO_BEEP_ON_TOUCH = 0x01;
-static const int BUTTON_FLAG_TYPE_AUTO_RED_GREEN = 0x02; // see void doToggleRedGreenButton() / BDButton.cpp
+static const int BUTTON_FLAG_TYPE_AUTO_RED_GREEN = 0x02;
+// better name for the function
+static const int BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN = 0x02;
 static const int BUTTON_FLAG_TYPE_AUTOREPEAT = 0x04;
+static const int BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN_MANUAL_REFRESH = 0x0A; // must be manually drawn after event to show new caption/color
+
 //new
 static const int FLAG_BUTTON_NO_BEEP_ON_TOUCH = 0x00;
 static const int FLAG_BUTTON_DO_BEEP_ON_TOUCH = 0x01;
@@ -389,12 +394,20 @@ static const int FLAG_SLIDER_CAPTION_ABOVE = 0x04;
 // Android system tones
 // codes start with 0 - 15 for DTMF tones and ends with code TONE_CDMA_SIGNAL_OFF=98 for silent tone (which does not work on lollipop)
 #define TONE_CDMA_KEYPAD_VOLUME_KEY_LITE 89
-#define TONE_PROP_BEEP 27
-#define TONE_PROP_BEEP2 28
+#define TONE_PROP_BEEP_OK TONE_CDMA_KEYPAD_VOLUME_KEY_LITE // 120 ms 941 + 1477Hz - normal tone for OK Feedback
+#define TONE_PROP_BEEP_ERROR 28 // 2* 35/200 ms 400 + 1200Hz - normal tone for ERROR Feedback
+#define TONE_PROP_BEEP_ERROR_HIGH 25 // 2* 100/100 ms 1200Hz - high tone for ERROR Feedback
+#define TONE_PROP_BEEP_ERROR_LONG 26 // 2* 35/200 ms 400 + 1200Hz - normal tone for ERROR Feedback
 #define TONE_SILENCE 50 // since 98 does not work on lollipop
 #define TONE_CDMA_ONE_MIN_BEEP 88
 #define TONE_DEFAULT TONE_CDMA_KEYPAD_VOLUME_KEY_LITE
 #define TONE_LAST_VALID_TONE_INDEX 98
+
+#define FEEDBACK_TONE_OK 0
+#define FEEDBACK_TONE_ERROR 1
+#define FEEDBACK_TONE_LONG_ERROR TONE_PROP_BEEP_ERROR_LONG
+#define FEEDBACK_TONE_HIGH_ERROR TONE_PROP_BEEP_ERROR_HIGH
+#define FEEDBACK_TONE_NO_TONE TONE_SILENCE
 
 /**********************
  * Sensors
@@ -450,7 +463,7 @@ public:
     void playTone(uint8_t aToneIndex);
     void playTone(uint8_t aToneIndex, int16_t aToneDuration);
     void playTone(uint8_t aToneIndex, int16_t aToneDuration, uint8_t aToneVolume);
-    void playFeedbackTone(bool isError);
+    void playFeedbackTone(uint8_t isError);
     void setLongTouchDownTimeout(uint16_t aLongTouchDownTimeoutMillis);
 
     void clearDisplay(Color_t aColor);
@@ -485,10 +498,15 @@ public:
 
     void debugMessage(const char *aStringPtr);
     void debug(uint8_t aByte);
+    void debug(const char* aMessage, uint8_t aByte);
+    void debug(const char* aMessage, int8_t aByte);
     void debug(int8_t aByte);
     void debug(uint16_t aShort);
+    void debug(const char* aMessage, uint16_t aShort);
     void debug(int aShort);
+    void debug(const char* aMessage, int aShort);
     void debug(uint32_t aShort);
+    void debug(float aDouble);
     void debug(double aDouble);
 
     void drawLine(uint16_t aXStart, uint16_t aYStart, uint16_t aXEnd, uint16_t aYEnd, Color_t aColor);
@@ -496,8 +514,8 @@ public:
     void drawLineFastOneX(uint16_t x0, uint16_t y0, uint16_t y1, Color_t aColor);
     void drawVectorDegree(uint16_t aXStart, uint16_t aYStart, uint16_t aLength, int aDegree, Color_t aColor,
             int16_t aThickness = 1);
-    void drawVectorRadian(uint16_t aXStart, uint16_t aYStart, uint16_t aLength, int aRadian, Color_t aColor,
-            int16_t aThickness = 1);
+    void drawVectorRadian(uint16_t aXStart, uint16_t aYStart, uint16_t aLength, float aRadian, Color_t aColor, int16_t aThickness =
+            1);
     void drawLineWithThickness(uint16_t aXStart, uint16_t aYStart, uint16_t aXEnd, uint16_t aYEnd, int16_t aThickness,
             Color_t aColor);
     void drawLineRelWithThickness(uint16_t aXStart, uint16_t aYStart, uint16_t aXDelta, uint16_t aYDelta, int16_t aThickness,
@@ -529,7 +547,8 @@ public:
     // Not yet implemented
     //    void getText(void (*aTextHandler)(const char *));
     //    void getTextWithShortPrompt(void (*aTextHandler)(const char *), const char *aShortPromptString);
-    void getInfo(uint16_t aInfoSubcommand, void (*aInfoHandler)(uint8_t *));
+    // results in a info callback
+    void getInfo(uint8_t aInfoSubcommand, void (*aInfoHandler)(uint8_t, uint8_t, uint16_t, ByteShortLongFloatUnion));
     // results in a reorientation callback
     void requestMaxCanvasSize(void);
 
@@ -605,7 +624,6 @@ public:
     struct XYSize mActualDisplaySize;
     struct XYSize mMaxDisplaySize;
     uint32_t mHostUnixTimestamp;
-    uint32_t mLocalMillisForHostTimestamp;
 
     volatile bool mConnectionEstablished;
     volatile bool mOrientationIsLandscape;
@@ -623,6 +641,8 @@ private:
 
 // The instance provided by the class itself
 extern BlueDisplay BlueDisplay1;
+
+void clearDisplayAndDisableButtonsAndSliders(Color_t aColor);
 
 #ifdef LOCAL_DISPLAY_EXISTS
 #include <MI0283QT2.h>
@@ -657,7 +677,7 @@ void writeStringC(const char *aStringPtr, uint8_t aStringLength);
 #endif
 
 /*
- * Utilities used also internal for
+ * Utilities used also internal
  */
 #ifdef AVR
 uint16_t getADCValue(uint8_t aChannel, uint8_t aReference);

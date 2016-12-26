@@ -83,9 +83,11 @@ public:
     void removeButton(Color_t aBackgroundColor);
     void drawCaption(void);
     void setCaption(const char * aCaption);
+    void setCaptionForValueTrue(const char * aCaption);
     void setCaptionAndDraw(const char * aCaption);
     void setCaption(const char * aCaption, bool doDrawButton);
     void setValue(int16_t aValue);
+    void setValue(int16_t aValue, bool doDrawButton);
     void setValueAndDraw(int16_t aValue);
     void setButtonColor(Color_t aButtonColor);
     void setButtonColorAndDraw(Color_t aButtonColor);
@@ -101,6 +103,7 @@ public:
             const char * aPGMCaption, uint8_t aCaptionSize, uint8_t aFlags, int16_t aValue,
             void (*aOnTouchHandler)(BDButton*, int16_t));
     void setCaptionPGM(const char * aPGMCaption);
+    void setCaptionPGMForValueTrue(const char * aCaption);
     void setCaptionPGM(const char * aPGMCaption, bool doDrawButton);
 #endif
 
@@ -113,8 +116,6 @@ public:
 
 private:
 };
-
-void doToggleRedGreenButton(BDButton * aTheTouchedButton, int16_t aValue);
 
 #endif
 

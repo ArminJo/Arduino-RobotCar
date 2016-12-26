@@ -11,7 +11,7 @@
 
 #include "BlueDisplay.h"
 
-#define PATH_LENGTH_MAX 200
+#define PATH_LENGTH_MAX 100
 
 // Change this if you have reprogrammed the hc05 module for higher baud rate
 //#define HC_05_BAUD_RATE BAUD_9600
@@ -41,13 +41,14 @@ extern uint8_t sActualPage;
 extern uint8_t sStepMode;
 extern bool sDoStep;
 
-extern char sDataBuffer[128];
+extern char sStringBuffer[128];
 
 void setupGUI(void);
 void loopGUI(void);
 void resetGUIControls();
 
 void doStartStop(BDButton * aTheTochedButton, int16_t aValue);
+void doStartStopAutomomousDrive(BDButton * aTheTouchedButton, int16_t aValue);
 void initDisplay(void);
 void drawGui(void);
 void checkAndShowDistancePeriodically(uint16_t aPeriodMillis);
@@ -56,19 +57,18 @@ void showDistance(int aCentimeter);
 
 void DrawPath();
 void resetPathData();
-void insertToPath(int aDegree, int aLengthCentimeter);
-void addToPath(int aLengthCentimeter, int aDegree);
+void insertToPath(int aLength, int aDegree, bool aAddEntry);
 
 void printMotorValues();
+void printMotorDebugValues();
 void printDistanceValues();
 void printSingleDistanceVector(uint16_t aLength, int aDegree, Color_t aColor);
-void printCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClear);
 
-void drawVinPeriodically();
+void printVinPeriodically();
 
-extern bool sRunManual;
-extern bool sRunTestSimple;
-extern bool sRunTestPro;
+extern bool sStarted;
+extern bool sRunOwnTest;
+extern bool sRunAutonomousDrive;
 
 extern unsigned int sLastCentimeterToObstacle;
 extern const int sGetDistancePeriod;

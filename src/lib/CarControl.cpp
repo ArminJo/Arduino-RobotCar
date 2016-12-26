@@ -3,6 +3,7 @@
  *
  *  Contains functions for control of the 2 motors of a car like setDirection, goDistanceCentimeter() and rotateCar().
  *  Checks input of PIN aPinFor2WDDetection since we need different factors for rotating a 4 wheel and a 2 wheel car.
+ *
  *  Needs EncoderMotorControl.cpp
  *
  *  Created on: 16.09.2016
@@ -30,8 +31,8 @@ Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 CarControl::CarControl() {
 }
 
-CarControl::~CarControl() {
-}
+//CarControl::~CarControl() {
+//}
 
 void CarControl::init(uint8_t aPinFor2WDDetection) {
     pinMode(aPinFor2WDDetection, INPUT_PULLUP);

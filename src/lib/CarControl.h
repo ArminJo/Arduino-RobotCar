@@ -20,9 +20,9 @@
 #define FACTOR_DEGREE_TO_COUNT_2WD_CAR 0.4277777
 #define FACTOR_DEGREE_TO_COUNT_4WD_CAR 0.8
 
-#define TURN_FORWARD 1
-#define TURN_BACKWARD 2
-#define TURN_IN_PLACE 3
+#define TURN_FORWARD 0
+#define TURN_BACKWARD 1
+#define TURN_IN_PLACE 2
 
 /*
  * Car Control
@@ -32,7 +32,7 @@ class CarControl {
 public:
 
     CarControl();
-    virtual ~CarControl();
+//    virtual ~CarControl();
 
     void init(uint8_t aPinFor2WDDetection);
 
