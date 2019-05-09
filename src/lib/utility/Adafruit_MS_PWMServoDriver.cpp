@@ -5,7 +5,7 @@
   ------> http://www.adafruit.com/products/815
 
   These displays use I2C to communicate, 2 pins are required to  
-  interface. For Arduino UNOs, thats SCL -> Analog 5, SDA -> Analog 4
+  interface. For Arduino UNOs, that's SCL -> Analog 5, SDA -> Analog 4
 
   Adafruit invests time and resources providing this open source code, 
   please support Adafruit and open-source hardware by purchasing 

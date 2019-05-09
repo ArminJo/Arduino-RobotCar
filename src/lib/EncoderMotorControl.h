@@ -175,7 +175,7 @@ public:
     uint16_t LastRideDistanceCount;
 
     /*
-     * Distance optocoupler impulse counter. is reseted at initGoDistanceCount if motor was stopped.
+     * Distance optocoupler impulse counter. is reset at initGoDistanceCount if motor was stopped.
      */
     volatile uint16_t DistanceCount;
     // used for debouncing and lock/timeout  detection
