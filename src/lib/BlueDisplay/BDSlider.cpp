@@ -1,7 +1,9 @@
 /*
  * BDSlider.cpp
  *
- *   SUMMARY
+ * Implementation of the Slider client stub for the Android BlueDisplay app.
+ *
+ *  SUMMARY
  *  Blue Display is an Open Source Android remote Display for Arduino etc.
  *  It receives basic draw requests from Arduino etc. over Bluetooth and renders it.
  *  It also implements basic GUI elements as buttons and sliders.
@@ -10,17 +12,18 @@
  *  Copyright (C) 2015  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
- *  This file is part of BlueDisplay.
+ *  This file is part of BlueDisplay https://github.com/ArminJo/android-blue-display.
+ *
  *  BlueDisplay is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
-
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -35,7 +38,7 @@
 
 BDSliderHandle_t sLocalSliderIndex = 0;
 
-BDSlider::BDSlider(void) {
+BDSlider::BDSlider(void) { // @suppress("Class members should be properly initialized")
 }
 
 #ifdef LOCAL_DISPLAY_EXISTS
@@ -60,7 +63,7 @@ BDSlider::BDSlider(BDSliderHandle_t aSliderHandle, TouchSlider * aLocalSliderPoi
  * @param aOnChangeHandler - If NULL no update of bar is done on touch - equivalent to FLAG_SLIDER_IS_ONLY_OUTPUT
  */
 void BDSlider::init(uint16_t aPositionX, uint16_t aPositionY, uint16_t aBarWidth, int16_t aBarLength, int16_t aThresholdValue,
-        int16_t aInitalValue, Color_t aSliderColor, Color_t aBarColor, uint8_t aFlags,
+        int16_t aInitalValue, color16_t aSliderColor, color16_t aBarColor, uint8_t aFlags,
         void (*aOnChangeHandler)(BDSlider *, uint16_t)) {
     BDSliderHandle_t tSliderNumber = sLocalSliderIndex++;
 
@@ -131,7 +134,7 @@ void BDSlider::setActualValueAndDrawBar(int16_t aActualValue) {
     }
 }
 
-void BDSlider::setBarThresholdColor(Color_t aBarThresholdColor) {
+void BDSlider::setBarThresholdColor(color16_t aBarThresholdColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalSliderPointer->setBarThresholdColor(aBarThresholdColor);
 #endif
@@ -140,7 +143,7 @@ void BDSlider::setBarThresholdColor(Color_t aBarThresholdColor) {
     }
 }
 
-void BDSlider::setBarBackgroundColor(Color_t aBarBackgroundColor) {
+void BDSlider::setBarBackgroundColor(color16_t aBarBackgroundColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalSliderPointer->setBarBackgroundColor(aBarBackgroundColor);
 #endif
@@ -149,8 +152,8 @@ void BDSlider::setBarBackgroundColor(Color_t aBarBackgroundColor) {
     }
 }
 
-void BDSlider::setCaptionProperties(uint8_t aCaptionSize, uint8_t aCaptionPosition, uint8_t aCaptionMargin, Color_t aCaptionColor,
-        Color_t aCaptionBackgroundColor) {
+void BDSlider::setCaptionProperties(uint8_t aCaptionSize, uint8_t aCaptionPosition, uint8_t aCaptionMargin, color16_t aCaptionColor,
+        color16_t aCaptionBackgroundColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalSliderPointer->setCaptionColors(aCaptionColor, aCaptionBackgroundColor);
 #endif
@@ -187,7 +190,7 @@ void BDSlider::setValueFormatString(const char * aValueFormatString) {
 }
 
 void BDSlider::setPrintValueProperties(uint8_t aPrintValueTextSize, uint8_t aPrintValuePosition, uint8_t aPrintValueMargin,
-        Color_t aPrintValueColor, Color_t aPrintValueBackgroundColor) {
+        color16_t aPrintValueColor, color16_t aPrintValueBackgroundColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalSliderPointer->setValueStringColors(aPrintValueColor, aPrintValueBackgroundColor);
 #endif

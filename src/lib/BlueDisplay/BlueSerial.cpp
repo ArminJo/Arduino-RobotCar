@@ -1,7 +1,9 @@
 /*
  * BlueSerial.cpp
  *
- *   SUMMARY
+ * Implements the "simpleSerial" low level serial functions for communication with the Android BlueDisplay app.
+ *
+ *  SUMMARY
  *  Blue Display is an Open Source Android remote Display for Arduino etc.
  *  It receives basic draw requests from Arduino etc. over Bluetooth and renders it.
  *  It also implements basic GUI elements as buttons and sliders.
@@ -10,17 +12,18 @@
  *  Copyright (C) 2014  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
- *  This file is part of BlueDisplay.
+ *  This file is part of BlueDisplay https://github.com/ArminJo/android-blue-display.
+ *
  *  BlueDisplay is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
-
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -60,21 +63,23 @@ bool USART_isBluetoothPaired(void) {
 #endif
 
 #ifdef USE_SIMPLE_SERIAL
-void initSimpleSerial(uint32_t aBaudRate, bool aUsePairedPin) {
 #ifdef LOCAL_DISPLAY_EXISTS
+void initSimpleSerial(uint32_t aBaudRate, bool aUsePairedPin) {
     if (aUsePairedPin) {
         pinMode(PAIRED_PIN, INPUT);
     }
+#else
+    void initSimpleSerial(uint32_t aBaudRate) {
 #endif
     uint16_t baud_setting;
 #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
     // Use TX1 on MEGA and on Leonardo, which has no TX0
-    UCSR1A = 1 << U2X1; // Double Speed Mode
+    UCSR1A = 1 << U2X1;// Double Speed Mode
     // Exact value = 17,3611 (- 1) for 115200  2,1%
     // 8,68 (- 1) for 230400 8,5% for 8, 3.7% for 9
     // 4,34 (- 1) for 460800 8,5%
     // HC-05 Specified Max Total Error (%) for 8 bit= +3.90/-4.00
-    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;    // /2 after -1 because of better rounding
+    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;// /2 after -1 because of better rounding
 
     // assign the baud_setting, a.k.a. ubbr (USART Baud Rate Register)
     UBRR1H = baud_setting >> 8;
@@ -88,7 +93,7 @@ void initSimpleSerial(uint32_t aBaudRate, bool aUsePairedPin) {
     // 8,68 (- 1) for 230400 8,5% for 8, 3.7% for 9
     // 4,34 (- 1) for 460800 8,5%
     // HC-05 Specified Max Total Error (%) for 8 bit= +3.90/-4.00
-    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;// /2 after -1 because of better rounding
+    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;    // /2 after -1 because of better rounding
 
     // assign the baud_setting, a.k.a. ubbr (USART Baud Rate Register)
     UBRR0H = baud_setting >> 8;
@@ -261,7 +266,7 @@ void sendUSARTArgsAndByteBuffer(uint8_t aFunctionTag, int aNumberOfArgs, ...) {
  * Assembles parameter header and appends header for data field
  */
 void sendUSART5ArgsAndByteBuffer(uint8_t aFunctionTag, uint16_t aXStart, uint16_t aYStart, uint16_t aXEnd, uint16_t aYEnd,
-        uint16_t aColor, uint8_t * aBuffer, size_t aBufferLength) {
+        uint16_t aColor, uint8_t * aBufferPtr, size_t aBufferLength) {
 
     uint16_t tParamBuffer[MAX_NUMBER_OF_ARGS_FOR_BD_FUNCTIONS];
 
@@ -277,7 +282,7 @@ void sendUSART5ArgsAndByteBuffer(uint8_t aFunctionTag, uint16_t aXStart, uint16_
     // add data field header
     *tBufferPointer++ = DATAFIELD_TAG_BYTE << 8 | SYNC_TOKEN; // start new transmission block
     *tBufferPointer++ = aBufferLength; // length in byte
-    sendUSARTBufferNoSizeCheck((uint8_t*) &tParamBuffer[0], 18, aBuffer, aBufferLength);
+    sendUSARTBufferNoSizeCheck((uint8_t*) &tParamBuffer[0], 18, aBufferPtr, aBufferLength);
 }
 
 /**
@@ -291,13 +296,13 @@ static uint8_t sReceivedDataSize;
 #ifdef USE_SIMPLE_SERIAL
 bool allowTouchInterrupts = false; // !!do not enable it, if event handling may take more time than receiving a byte (which results in buffer overflow)!!!
 
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
+#if defined(USART1_RX_vect)
 // Use TX1 on MEGA and on Leonardo, which has no TX0
 ISR(USART1_RX_vect) {
-    uint8_t tByte = UDR1;
+uint8_t tByte = UDR1;
 #else
-    ISR(USART_RX_vect) {
-        uint8_t tByte = UDR0;
+ISR(USART_RX_vect) {
+    uint8_t tByte = UDR0;
 #endif
     if (sReceiveBufferOutOfSync) {
         // just wait for next sync token and reset buffer
@@ -359,10 +364,10 @@ ISR(USART1_RX_vect) {
         }
     }
 }
-#else
+#else // USE_SIMPLE_SERIAL line 294
 
 /*
- * Will be called after each loop() (by serial...) to process input data if available.
+ * Will be called after each loop() (by Arduino Serial...) to process input data if available.
  */
 void serialEvent(void) {
     if (sReceiveBufferOutOfSync) {
@@ -417,4 +422,4 @@ void serialEvent(void) {
         }
     }
 }
-#endif
+#endif // USE_SIMPLE_SERIAL line 294

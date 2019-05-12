@@ -1,7 +1,9 @@
 /*
  * BDButton.cpp
  *
- *   SUMMARY
+ * Implementation of the Button client stub for the Android BlueDisplay app.
+ *
+ *  SUMMARY
  *  Blue Display is an Open Source Android remote Display for Arduino etc.
  *  It receives basic draw requests from Arduino etc. over Bluetooth and renders it.
  *  It also implements basic GUI elements as buttons and sliders.
@@ -10,17 +12,18 @@
  *  Copyright (C) 2015  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
- *  This file is part of BlueDisplay.
+ *  This file is part of BlueDisplay https://github.com/ArminJo/android-blue-display.
+ *
  *  BlueDisplay is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
-
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -40,10 +43,10 @@
  */
 BDButtonHandle_t sLocalButtonIndex = 0;
 
-BDButton::BDButton(void) {
+BDButton::BDButton(void) { // @suppress("Class members should be properly initialized")
 }
 
-BDButton::BDButton(BDButtonHandle_t aButtonHandle) {
+BDButton::BDButton(BDButtonHandle_t aButtonHandle) { // @suppress("Class members should be properly initialized")
     mButtonHandle = aButtonHandle;
 }
 
@@ -80,9 +83,10 @@ bool BDButton::operator!=(const BDButton &aButton) {
 /*
  * initialize a button stub
  * If local display is attached, allocate a button from the local pool, so do not forget to call deinit()
- * Caption is value for false (0) for BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN buttons
+ * Caption is value for false (0) if FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN is set
+ * Multi-line caption has \n as line separator.
  */
-void BDButton::init(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, uint16_t aHeightY, Color_t aButtonColor,
+void BDButton::init(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, uint16_t aHeightY, color16_t aButtonColor,
         const char * aCaption, uint16_t aCaptionSize, uint8_t aFlags, int16_t aValue, void (*aOnTouchHandler)(BDButton*, int16_t)) {
 
     BDButtonHandle_t tButtonNumber = sLocalButtonIndex++;
@@ -107,15 +111,16 @@ void BDButton::init(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, 
     mLocalButtonPtr->initButton(aPositionX, aPositionY, aWidthX, aHeightY, aButtonColor, aCaption, aCaptionSize,
             aFlags | FLAG_USE_BDBUTTON_FOR_CALLBACK, aValue, reinterpret_cast<void (*)(TouchButton*, int16_t)> (aOnTouchHandler));
 
-mLocalButtonPtr    ->mBDButtonPtr = this;
+#ifdef REMOTE_DISPLAY_SUPPORTED
+            mLocalButtonPtr ->mBDButtonPtr = this;
+#endif
 #endif
 }
-
 #ifdef LOCAL_DISPLAY_EXISTS
-/*
- * Assume a button stack, e.g. only local buttons are deinitialize which were initialized last.
- * localButtonIndex is used as stack pointer.
- */
+    /*
+     * Assume a button stack, e.g. only local buttons are deinitialize which were initialized last.
+     * localButtonIndex is used as stack pointer.
+     */
 void BDButton::deinit(void) {
     sLocalButtonIndex--;
     delete mLocalButtonPtr;
@@ -133,7 +138,7 @@ void BDButton::drawButton(void) {
     }
 }
 
-void BDButton::removeButton(Color_t aBackgroundColor) {
+void BDButton::removeButton(color16_t aBackgroundColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalButtonPtr->removeButton(aBackgroundColor);
 #endif
@@ -231,7 +236,7 @@ void BDButton::setValueAndDraw(int16_t aValue) {
     }
 }
 
-void BDButton::setButtonColor(Color_t aButtonColor) {
+void BDButton::setButtonColor(color16_t aButtonColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalButtonPtr->setButtonColor(aButtonColor);
 #endif
@@ -240,7 +245,7 @@ void BDButton::setButtonColor(Color_t aButtonColor) {
     }
 }
 
-void BDButton::setButtonColorAndDraw(Color_t aButtonColor) {
+void BDButton::setButtonColorAndDraw(color16_t aButtonColor) {
 #ifdef LOCAL_DISPLAY_EXISTS
     mLocalButtonPtr->setButtonColor(aButtonColor);
     mLocalButtonPtr->drawButton();
@@ -266,8 +271,8 @@ void BDButton::setPosition(int16_t aPositionX, int16_t aPositionY) {
 void BDButton::setButtonAutorepeatTiming(uint16_t aMillisFirstDelay, uint16_t aMillisFirstRate, uint16_t aFirstCount,
         uint16_t aMillisSecondRate) {
 #ifdef LOCAL_DISPLAY_EXISTS
-    ((TouchButtonAutorepeat*) mLocalButtonPtr)->setButtonAutorepeatTiming(aMillisFirstDelay, aMillisFirstRate, aFirstCount,
-            aMillisSecondRate);
+//    ((TouchButtonAutorepeat*) mLocalButtonPtr)->setButtonAutorepeatTiming(aMillisFirstDelay, aMillisFirstRate, aFirstCount,
+//            aMillisSecondRate);
 #endif
     if (USART_isBluetoothPaired()) {
         sendUSARTArgs(FUNCTION_BUTTON_SETTINGS, 7, mButtonHandle, SUBFUNCTION_BUTTON_SET_AUTOREPEAT_TIMING, aMillisFirstDelay,
@@ -337,7 +342,7 @@ void BDButton::deactivateAllButtons(void) {
 }
 
 #ifdef AVR
-void BDButton::initPGM(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, uint16_t aHeightY, Color_t aButtonColor,
+void BDButton::initPGM(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, uint16_t aHeightY, color16_t aButtonColor,
         const char * aPGMCaption, uint8_t aCaptionSize, uint8_t aFlags, int16_t aValue,
         void (*aOnTouchHandler)(BDButton*, int16_t)) {
 
@@ -354,6 +359,9 @@ void BDButton::initPGM(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidth
     mButtonHandle = tButtonNumber;
 }
 
+/*
+ * sets only caption
+ */
 void BDButton::setCaptionPGM(const char * aPGMCaption) {
     if (USART_isBluetoothPaired()) {
         uint8_t tCaptionLength = strlen_P(aPGMCaption);

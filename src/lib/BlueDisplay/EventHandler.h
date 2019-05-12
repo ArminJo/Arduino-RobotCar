@@ -1,7 +1,7 @@
 /*
  * EventHandler.h
  *
- *   SUMMARY
+ *  SUMMARY
  *  Blue Display is an Open Source Android remote Display for Arduino etc.
  *  It receives basic draw requests from Arduino etc. over Bluetooth and renders it.
  *  It also implements basic GUI elements as buttons and sliders.
@@ -10,17 +10,18 @@
  *  Copyright (C) 2014  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
- *  This file is part of BlueDisplay.
+ *  This file is part of BlueDisplay https://github.com/ArminJo/android-blue-display.
+ *
  *  BlueDisplay is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
-
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -30,11 +31,11 @@
 #define EVENTHANDLER_H_
 
 #ifndef DO_NOT_NEED_BASIC_TOUCH_EVENTS
-//#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // outcommenting or better defining for the compiler with -DDO_NOT_NEED_BASIC_TOUCH_EVENTS saves 620 bytes FLASH and 36 bytes RAM
+//#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // commenting out or better defining for the compiler with -DDO_NOT_NEED_BASIC_TOUCH_EVENTS saves 620 bytes FLASH and 36 bytes RAM
 #endif
 
 #ifdef LOCAL_DISPLAY_EXISTS
-#include "BlueDisplay.h" // for Color_t
+#include "BlueDisplay.h" // for
 //#include "ADS7846.h"
 //extern ADS7846 TouchPanel;
 #else
@@ -124,7 +125,7 @@ void setPeriodicTouchCallbackPeriod(uint32_t aCallbackPeriod);
 
 bool getDisplayXYValuesFlag(void);
 void setDisplayXYValuesFlag(bool aEnableDisplay);
-void printTPData(int x, int y, Color_t aColor, Color_t aBackColor);
+void printTPData(int x, int y,  color16_t aColor,  color16_t aBackColor);
 #endif
 
 #ifdef __cplusplus

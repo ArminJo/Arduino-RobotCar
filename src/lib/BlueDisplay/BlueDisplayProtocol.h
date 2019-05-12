@@ -1,7 +1,9 @@
 /*
  * BlueDisplayProtocol.h
  *
- *   SUMMARY
+ * Defines all the protocol related constants and structures needed for the client stubs.
+ *
+ *  SUMMARY
  *  Blue Display is an Open Source Android remote Display for Arduino etc.
  *  It receives basic draw requests from Arduino etc. over Bluetooth and renders it.
  *  It also implements basic GUI elements as buttons and sliders.
@@ -10,17 +12,18 @@
  *  Copyright (C) 2015  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
- *  This file is part of BlueDisplay.
+ *  This file is part of BlueDisplay https://github.com/ArminJo/android-blue-display.
+ *
  *  BlueDisplay is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
-
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -37,7 +40,7 @@
  * 1. Sync Byte A5
  * 2. Byte Data_Size_Type token (byte, short etc.) - only byte used
  * 3. Short length of data in byte units
- * 4. Length items of data values
+ * 4. (Length) items of data values
  *
  *
  * RECEIVE PROTOCOL USED:
@@ -154,11 +157,14 @@ struct Swipe {
     uint16_t TouchDeltaAbsMax; // max of TouchDeltaXAbs and TouchDeltaYAbs to easily decide if swipe is large enough to be accepted
 };
 
+// Union to speed up the combination of low and high bytes to a word
+// it is not optimal since the compiler still generates 2 unnecessary moves
+// but using  -- value = (high << 8) | low -- gives 5 unnecessary instructions
 union ByteShortLongFloatUnion {
-    unsigned char ByteValues[4];
-    uint16_t Int16Values[2];
-    uint32_t Int32Value;
-    float FloatValue;
+    unsigned char byteValues[4];
+    uint16_t uint16Values[2];
+    uint32_t uint32Value;
+    float floatValue;
 };
 
 struct GuiCallback {
