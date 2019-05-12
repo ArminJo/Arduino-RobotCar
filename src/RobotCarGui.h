@@ -20,9 +20,6 @@
 #define DISPLAY_HEIGHT DISPLAY_DEFAULT_HEIGHT // 240
 
 #define SPEED_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3
-#define US_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3
-
-#define SPEED_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3
 #define US_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3 // 128
 
 #define US_DISTANCE_MAP_ORIGIN_X 200
@@ -47,7 +44,7 @@ void setupGUI(void);
 void loopGUI(void);
 void resetGUIControls();
 
-void doStartStop(BDButton * aTheTochedButton, int16_t aValue);
+void doRobotCarStartStop(BDButton * aTheTochedButton, int16_t aValue);
 void doStartStopAutomomousDrive(BDButton * aTheTouchedButton, int16_t aValue);
 void initDisplay(void);
 void drawGui(void);
@@ -62,7 +59,7 @@ void insertToPath(int aLength, int aDegree, bool aAddEntry);
 void printMotorValues();
 void printMotorDebugValues();
 void printDistanceValues();
-void printSingleDistanceVector(uint16_t aLength, int aDegree, Color_t aColor);
+void printSingleDistanceVector(uint16_t aLength, int aDegrees, color16_t aColor);
 
 void printVinPeriodically();
 

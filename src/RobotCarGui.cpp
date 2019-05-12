@@ -28,15 +28,15 @@
 
 #include "RobotCarGui.h"
 #include "RobotCar.h"
-#include "ArminsUtils.h"
+#include "AutonomousDrive.h"
+#include <HCSR04.h>
 
 #include <avr/interrupt.h>
-#include <AutonomousDrive.h>
 
 /*
  * Motor GUI
  */
-BDButton TouchButtonStartStop;
+BDButton TouchButtonRobotCarStartStop;
 BDButton TouchButtonReset;
 BDButton TouchButtonBack;
 BDButton TouchButtonResetPath;
@@ -44,7 +44,7 @@ BDButton TouchButtonStartStopAutonomousForPathPage;
 
 BDButton TouchButtonNextPage;
 BDButton TouchButtonDirection;
-BDButton TouchButtonStoreVelocity;
+BDButton TouchButtonSetSpeed;
 
 BDButton TouchButtonTestOwn;
 BDButton TouchButtonAutonomousDrive;
@@ -104,7 +104,7 @@ char sStringBuffer[128];
 
 void setupGUI(void) {
 #ifdef USE_SIMPLE_SERIAL  // see line 38 in BlueSerial.h - use global #define USE_STANDARD_SERIAL to disable it
-    initSimpleSerial(HC_05_BAUD_RATE, false);
+    initSimpleSerial(HC_05_BAUD_RATE);
 #else
     Serial.begin(HC_05_BAUD_RATE);
 #endif
@@ -264,17 +264,25 @@ void doRotation(BDButton * aTheTouchedButton, int16_t aValue) {
 /*
  * Store ActualSpeed as MaxSpeed
  */
-void doStoreMaxSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
-    if (sLastSpeedSliderValue != 0) {
+void doSetSpeed(float aValue) {
+    uint16_t tValue = aValue;
+    if (tValue > 10 && tValue < 256) {
         // must use value for compensation not compensated value
-        myCar.rightMotorControl.MaxSpeed = sLastSpeedSliderValue;
+        myCar.rightMotorControl.MaxSpeed = tValue;
         myCar.rightMotorControl.writeEeprom();
 
         // use the same value here !
-        myCar.leftMotorControl.MaxSpeed = sLastSpeedSliderValue;
+        myCar.leftMotorControl.MaxSpeed = tValue;
         myCar.leftMotorControl.writeEeprom();
     }
     printMotorValues();
+}
+
+/*
+ * Request speed value as number
+ */
+void doGetSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
+    BlueDisplay1.getNumberWithShortPrompt(&doSetSpeed, "Speed [11 - 255]");
 }
 
 void speedSliderSetValue(uint8_t aSpeed, bool aUpdateBar) {
@@ -300,11 +308,11 @@ void doSpeedSlider(BDSlider * aTheTouchedSlider, uint16_t aValue) {
  * Convert full range to 180 degree
  */
 void doUSPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
-    ServoWrite(aValue, false);
+    US_ServoWrite(aValue);
 }
 
 void setStartStopButtonValue() {
-    TouchButtonStartStop.setValueAndDraw(sStarted);
+    TouchButtonRobotCarStartStop.setValueAndDraw(sStarted);
 }
 
 void setStartStopAutonomousForPathPageButtonValue() {
@@ -330,7 +338,7 @@ void setSwitchPagesButtonCaption() {
 /*
  * Handle Start/Stop
  */
-void doStartStop(BDButton * aTheTouchedButton, int16_t aValue) {
+void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aValue) {
     sStarted = !sStarted;
     if (sStarted) {
         // enable motors
@@ -384,13 +392,13 @@ void doSingleStep(BDButton * aTheTouchedButton, int16_t aValue) {
 void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
     bool tInfoWasProcessed;
     if (sRunOwnTest) {
-        tInfoWasProcessed = fillForwardDistancesInfoMyOwn(&ForwardDistancesInfo, true, true);
+        tInfoWasProcessed = myOwnFillForwardDistancesInfo(&ForwardDistancesInfo, true, true);
     } else {
         clearPrintedForwardDistancesInfos();
         tInfoWasProcessed = fillForwardDistancesInfo(&ForwardDistancesInfo, true, true);
         doWallDetection(&ForwardDistancesInfo, true);
-        sNextDegreeToTurn = doCollisionDetectionPro(&ForwardDistancesInfo);
-        drawCollisionDecision(sNextDegreeToTurn, CENTIMETER_PER_RIDE_PRO, false);
+        sNextDegreesToTurn = doCollisionDetectionPro(&ForwardDistancesInfo);
+        drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE_PRO, false);
     }
     if (!tInfoWasProcessed) {
         drawForwardDistancesInfos(&ForwardDistancesInfo);
@@ -486,48 +494,48 @@ void initDisplay(void) {
      * Control buttons
      */
     TouchButtonBack.initPGM(BUTTON_WIDTH_4_POS_4, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_4, COLOR_RED, PSTR("Back"), TEXT_SIZE_22,
-            BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doBack);
+            FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doBack);
 
     TouchButtonResetPath.initPGM(0, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_4, COLOR_RED, PSTR("Clear"), TEXT_SIZE_22,
-            BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doResetPath);
+            FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doResetPath);
 
-    TouchButtonStartStop.initPGM(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_BLUE, PSTR("Start"),
-    TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH | BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN, sStarted, &doStartStop);
-    TouchButtonStartStop.setCaptionPGMForValueTrue(PSTR("Stop"));
+    TouchButtonRobotCarStartStop.initPGM(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_BLUE, PSTR("Start"),
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sStarted, &doRobotCarStartStop);
+    TouchButtonRobotCarStartStop.setCaptionPGMForValueTrue(PSTR("Stop"));
 
     TouchButtonReset.initPGM(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
-    COLOR_BLUE, PSTR("Reset"), TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doReset);
+    COLOR_BLUE, PSTR("Reset"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset);
 
     TouchButtonNextPage.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, "",
-    TEXT_SIZE_16, BUTTON_FLAG_DO_BEEP_ON_TOUCH, myCar.isDirectionForward, &GUISwitchPages);
+    TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, myCar.isDirectionForward, &GUISwitchPages);
     setSwitchPagesButtonCaption();
 
-    TouchButtonStoreVelocity.initPGM(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_8_LINE_2 + 1, BUTTON_WIDTH_6, BUTTON_HEIGHT_8,
-    COLOR_BLUE, PSTR("Store"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doStoreMaxSpeed);
+    TouchButtonSetSpeed.initPGM(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_8_LINE_2 + 1, BUTTON_WIDTH_6, BUTTON_HEIGHT_8,
+    COLOR_BLUE, PSTR("Set\nspeed"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doGetSpeed);
 
-    TouchButtonStepMode.init(0, 0, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, "", TEXT_SIZE_18, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0,
+    TouchButtonStepMode.init(0, 0, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, "", TEXT_SIZE_18, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0,
             &doStepMode);
     setStepModeButtonCaption();
 
     TouchButtonSingleScan.initPGM(0, BUTTON_HEIGHT_4_LINE_2, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, PSTR("Scan"),
-    TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doSingleScan);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doSingleScan);
 
     TouchButtonSingleStep.initPGM(0, BUTTON_HEIGHT_4_LINE_3, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, PSTR("Step"),
-    TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &doSingleStep);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doSingleStep);
 
     TouchButtonAutonomousDrive.initPGM(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, PSTR("Start"),
-    TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH | BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN, sRunAutonomousDrive,
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sRunAutonomousDrive,
             &doStartStopAutomomousDrive);
     TouchButtonAutonomousDrive.setCaptionPGMForValueTrue(PSTR("Stop"));
 
     TouchButtonTestOwn.initPGM(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
             PSTR("Start\nyour own"),
-            TEXT_SIZE_18, BUTTON_FLAG_DO_BEEP_ON_TOUCH | BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN, sRunOwnTest, &doStartStopTestOwn);
+            TEXT_SIZE_18, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sRunOwnTest, &doStartStopTestOwn);
     TouchButtonTestOwn.setCaptionPGMForValueTrue(PSTR("Stop\nyour own"));
 
     // copy of button TouchButtonAutonomousDrive for Path page
     TouchButtonStartStopAutonomousForPathPage.initPGM(BUTTON_WIDTH_4_POS_4, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_4, COLOR_RED,
-            PSTR("Start"), TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH | BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN, sStarted,
+            PSTR("Start"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sStarted,
             &doStartStopAutonomousForPathPage);
     TouchButtonStartStopAutonomousForPathPage.setCaptionPGMForValueTrue(PSTR("Stop"));
 
@@ -535,36 +543,36 @@ void initDisplay(void) {
      * Test buttons
      */
     TouchButton5cm.initPGM(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, PSTR("5cm"),
-    TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 5, &doDistance);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 5, &doDistance);
     TouchButton10cm.initPGM(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, PSTR("10cm"),
-    TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 10, &doDistance);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 10, &doDistance);
 
     TouchButton20cm.initPGM(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, PSTR("20cm"),
-    TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 20, &doDistance);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 20, &doDistance);
     TouchButton40cm.initPGM(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, PSTR("40cm"),
-    TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 40, &doDistance);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 40, &doDistance);
 
     TouchButton45DegreeLeft.initPGM(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            PSTR("45\xB0"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 45, &doRotation);
+            PSTR("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation);
     TouchButton45DegreeRight.initPGM(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            PSTR("45\xB0"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, -45, &doRotation);
+            PSTR("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation);
 
     TouchButton90DegreeLeft.initPGM(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            PSTR("90\xB0"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 90, &doRotation);
+            PSTR("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 90, &doRotation);
     TouchButton90DegreeRight.initPGM(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            PSTR("90\xB0"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, -90, &doRotation);
+            PSTR("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation);
     TouchButton360Degree.initPGM(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            PSTR("360\xB0"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 360, &doRotation);
+            PSTR("360\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 360, &doRotation);
 
     TouchButtonCalibrate.initPGM(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED,
-            PSTR("cal"), TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 1, &doCalibrate);
+            PSTR("CAL"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 1, &doCalibrate);
 
     TouchButtonDebug.initPGM(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED, PSTR("dbg"),
-    TEXT_SIZE_11, BUTTON_FLAG_DO_BEEP_ON_TOUCH | BUTTON_FLAG_TYPE_TOGGLE_RED_GREEN, sShowDebug, &doShowDebug);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sShowDebug, &doShowDebug);
 
     // Direction
     TouchButtonDirection.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, "",
-    TEXT_SIZE_22, BUTTON_FLAG_DO_BEEP_ON_TOUCH, 0, &GUIchangeDirection);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &GUIchangeDirection);
     setDirectionButtonCaption();
 }
 
@@ -586,7 +594,7 @@ void drawGui(void) {
     }
 
     if (sActualPage == PAGE_MANUAL_CONTROL) {
-        TouchButtonStartStop.drawButton();
+        TouchButtonRobotCarStartStop.drawButton();
         TouchButtonReset.drawButton();
 
         TouchButtonDirection.drawButton();
@@ -607,9 +615,9 @@ void drawGui(void) {
         SliderSpeed.drawSlider();
         SliderSpeedRight.drawSlider();
         SliderSpeedLeft.drawSlider();
-        TouchButtonStoreVelocity.drawButton();
+        TouchButtonSetSpeed.drawButton();
 
-        SliderUSPosition.setActualValueAndDrawBar(sLastServoAngleInDegree);
+        SliderUSPosition.setActualValueAndDrawBar(sLastServoAngleInDegrees);
         SliderUSPosition.drawSlider();
         SliderUSDistance.drawSlider();
 
@@ -630,7 +638,7 @@ void drawGui(void) {
         TouchButtonSingleScan.drawButton();
         TouchButtonSingleStep.drawButton();
         drawForwardDistancesInfos(&ForwardDistancesInfo);
-        drawCollisionDecision(sNextDegreeToTurn, CENTIMETER_PER_RIDE_PRO, false);
+        drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE_PRO, false);
 
     } else {
         // draws also the buttons, since it first clears the screen
@@ -676,7 +684,7 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
         long tMillis = millis();
         if (sLastUSMeasurementMillis + aPeriodMillis < tMillis) {
             sLastUSMeasurementMillis = tMillis;
-            unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(256);
+            unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(300);
             // feedback as slider length
             if (tCentimeter != sLastCentimeterToObstacle) {
                 sLastCentimeterToObstacle = tCentimeter;
@@ -686,8 +694,8 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
     }
 }
 
-void printSingleDistanceVector(uint16_t aLength, int aDegree, Color_t aColor) {
-    BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLength, aDegree, aColor, 3);
+void printSingleDistanceVector(uint16_t aLength, int aDegrees, color16_t aColor) {
+    BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLength, aDegrees, aColor, 3);
 }
 
 /*
@@ -721,8 +729,8 @@ void resetPathData() {
         yPathDelta[i] = 0;
     }
     // to start new path in right direction
-    sNextDegreeToTurn = 0;
-    sLastDegreeTurned = 0;
+    sNextDegreesToTurn = 0;
+    sLastDegreesTurned = 0;
 }
 
 /*

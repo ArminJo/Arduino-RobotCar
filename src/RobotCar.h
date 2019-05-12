@@ -8,38 +8,49 @@
 #ifndef SRC_ROBOTCAR_H_
 #define SRC_ROBOTCAR_H_
 
-#include <AutonomousDrive.h>
-#include "CarControl.h"
-//#include "Servo.h"
+#include "AutonomousDrive.h"
+#include <CarControl.h>
 
+#define CENTIMETER_PER_RIDE 20
+
+#define MINIMUM_DISTANCE_TO_SIDE 21
+#define MINIMUM_DISTANCE_TO_FRONT 35
+
+#define BREADBOARD_VERSION
 /*
  * Pin usage
  */
-// Pin 13 has an LED connected on most Arduino boards.
-const int LED_PIN = 13;
 
 // if connected to ground we have a 2 WD CAR
-const int TWOWD_DETECTION_PIN = 12;
+const int TWO_WD_DETECTION_PIN = 12;
 
-// Must use digital pin 3 and 4 on Arduino, since they are connected to INT0 and INT1
-const int DISTANCE_SENSOR_LEFT_PIN = 3;
-const int DISTANCE_SENSOR_RIGHT_PIN = 4;
-const int DEBUG1_PIN = 5;
+// Must use digital pin 2 and 3 on Arduino, since they are connected to INT0 and INT1
+const int LEFT_ENCODER_PIN = 2;
+const int RIGHT_ENCODER_PIN = 3;
+const int DEBUG_OUT_PIN = 5;
 
-extern uint8_t TRIGGER_OUT_PIN; // = A0;
-extern uint8_t ECHO_IN_PIN; // = A1;
+const uint8_t TRIGGER_OUT_PIN = A1;
+const uint8_t ECHO_IN_PIN = A2;
 
 // assume resistor network of 100k / 10k (divider by 11)
-const int VCC_11TH_IN_CHANNEL = 3; // = A3
+#ifdef BREADBOARD_VERSION
+const int VCC_11TH_IN_CHANNEL = 7; // = A7 on Nano board
+#else
+#define USE_ADAFRUIT_MOTOR_SHIELD
+const int VCC_11TH_IN_CHANNEL = 0; // = A0
+#endif
 
+// Used by the twi interface for the Adafruit motor shield
 //const int SDA_PIN = A4;
 //const int SCL_PIN = A5;
-const int SERVO_CURRENT_IN_CHANNEL = 2; // = A2
-const int SERVO_CONTROL_PIN = 10;
+
+// determined by using LightweightServo lib
+//const int US_SERVO_CONTROL_PIN = 9;
+//const int LASER_SERVO_CONTROL_PIN = 10;
 
 extern CarControl myCar;
 
-bool fillForwardDistancesInfoMyOwn(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues,
+bool myOwnFillForwardDistancesInfo(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues,
 bool aDoFirstValue);
-int doMyOwnCollisionDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo);
+int myOwnDoCollisionDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo);
 #endif /* SRC_ROBOTCAR_H_ */
