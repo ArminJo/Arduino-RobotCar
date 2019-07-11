@@ -4,8 +4,8 @@
  * Contains:
  * fillForwardDistancesInfoPro(): Acquisition of 180 degrees distances by ultrasonic sensor and servo
  * doWallDetection(): Enhancement of acquired data because of lack of detecting flat surfaces by US at angels out of 70 to 110 degree.
- * doCollisionDetectionPro(): decision where to turn in dependency of the acquired distances.
- * driveAutonomous(): The loop which handles the start/stop, single step and path output functionality.
+ * doBuiltInCollisionDetection(): decision where to turn in dependency of the acquired distances.
+ * driveAutonomousOneStep(): The loop which handles the start/stop, single step and path output functionality.
  *
  *  Created on: 08.11.2016
  *  Copyright (C) 2016  Armin Joachimsmeyer
@@ -21,18 +21,18 @@
  *
  */
 
-#include <LightweightServo.h>
+#include <EncoderMotor.h>
 #include <HCSR04.h>
 
 #include "AutonomousDrive.h"
 #include "RobotCar.h"
 #include "RobotCarGui.h"
 
-#include <EncoderMotorControl.h>
 #include <stdlib.h> // for dtostrf()
-//
 
-ForwardDistancesInfoStruct ForwardDistancesInfo;
+ForwardDistancesInfoStruct sForwardDistancesInfo;
+
+Servo USDistanceServo;
 uint8_t sLastServoAngleInDegrees; // 0 - 180 needed for optimized delay for servo repositioning
 
 // Storage for turning decision especially for single step mode
@@ -40,19 +40,21 @@ int sNextDegreesToTurn = 0;
 // Storage of last turning for insertToPath()
 int sLastDegreesTurned = 0;
 
-// 0 degrees => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
-int8_t sWallRightDegrees = 0;
-int8_t sWallLeftDegrees = 0;
+// TODO handle turn modes
+uint8_t sTurnMode = TURN_IN_PLACE;
 
-uint8_t sCountPerScan = CENTIMETER_PER_RIDE_PRO * 2;
-uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE_PRO;
+uint8_t sCountPerScan = CENTIMETER_PER_RIDE * 2;
+uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE;
 
+void initUSServo() {
+    USDistanceServo.attach(US_SERVO_PIN);
+    US_ServoWriteAndDelay(90);
+}
 /*
  * sets also sLastServoAngleInDegrees to enable optimized servo movement and delays
  * SG90 Micro Servo has reached its end position if the current (200 mA) is low for more than 11 to 14 ms
  */
-
-void US_ServoWrite(uint8_t aValueDegrees, bool doDelay) {
+void US_ServoWriteAndDelay(uint8_t aValueDegrees, bool doDelay) {
 
     if (aValueDegrees > 220) {
         // handle underflow
@@ -65,14 +67,13 @@ void US_ServoWrite(uint8_t aValueDegrees, bool doDelay) {
     sLastServoAngleInDegrees = aValueDegrees;
     // My servo is top down and therefore inverted
     aValueDegrees = 180 - aValueDegrees;
-    digitalWrite(DEBUG_OUT_PIN, HIGH);
-    write9(aValueDegrees);
+    USDistanceServo.write(aValueDegrees);
     if (tDeltaDegrees == 0) {
         return;
     }
     if (doDelay) {
         // Synchronize and check for user input before doing delay
-        myCar.rightMotorControl.synchronizeMotor(&myCar.leftMotorControl, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
         loopGUI();
         // Datasheet says: SG90 Micro Servo needs 100 millis per 60 degrees angle => 300 ms per 180
         // I measured: SG90 Micro Servo needs 400 per 180 degrees and 400 per 2*90 degree, but 540 millis per 9*20 degree
@@ -83,77 +84,14 @@ void US_ServoWrite(uint8_t aValueDegrees, bool doDelay) {
 //        digitalWrite(DEBUG_OUT_PIN, LOW);
 
         // factor 8 gives a fairly reproducible result, factor 4 is a bit too fast
-        uint16_t tWaitDelayforServo = tDeltaDegrees * 5;
+        uint16_t tWaitDelayforServo = tDeltaDegrees * 7;
         delay(tWaitDelayforServo);
     }
 }
 
 /*
- * Clear drawing area
- */
-void clearPrintedForwardDistancesInfos() {
-    BlueDisplay1.fillRectRel(US_DISTANCE_MAP_ORIGIN_X - US_DISTANCE_MAP_WIDTH_HALF,
-    US_DISTANCE_MAP_ORIGIN_Y - US_DISTANCE_MAP_HEIGHT, US_DISTANCE_MAP_WIDTH_HALF * 2, US_DISTANCE_MAP_HEIGHT + 2, COLOR_WHITE);
-}
-
-/*
- * Draw values of ActualDistancesArray as vectors
- */
-void drawForwardDistancesInfos(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
-    color16_t tColor;
-    uint8_t tActualDegrees = 0;
-    /*
-     * Clear drawing area
-     */
-    clearPrintedForwardDistancesInfos();
-    for (int i = 0; i < NUMBER_OF_DISTANCES; ++i) {
-        /*
-         * Determine color
-         */
-        uint8_t tDistance = aForwardDistancesInfo->RawDistancesArray[i];
-        tColor = COLOR_ORANGE;
-        if (tDistance >= US_TIMEOUT_CENTIMETER_PRO) {
-            tDistance = US_TIMEOUT_CENTIMETER_PRO;
-            tColor = COLOR_GREEN;
-        }
-        if (tDistance > sCountPerScan) {
-            tColor = COLOR_GREEN;
-        } else if (tDistance < sCentimeterPerScan) {
-            tColor = COLOR_RED;
-        }
-
-        /*
-         * Draw line
-         */
-        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tActualDegrees, tColor, 3);
-        tActualDegrees += DEGREES_PER_STEP;
-    }
-    doWallDetection(aForwardDistancesInfo, true);
-}
-
-void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClear) {
-    if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
-        color16_t tColor = COLOR_YELLOW;
-        int tDegreeToDisplay = aDegreeToTurn;
-        if (tDegreeToDisplay == 180) {
-            tColor = COLOR_PURPLE;
-            tDegreeToDisplay = 0;
-        }
-        if (aDoClear) {
-            tColor = COLOR_WHITE;
-        }
-        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
-                tColor);
-        if (!aDoClear) {
-            sprintf_P(sStringBuffer, PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sWallLeftDegrees, aDegreeToTurn,
-                    sWallRightDegrees);
-            BlueDisplay1.drawText(US_DISTANCE_MAP_ORIGIN_X - US_DISTANCE_MAP_WIDTH_HALF, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11,
-                    sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
-        }
-    }
-}
-/*
- * Get 7 distances starting at 0 degrees (right) increasing by 30 degrees up to 180 degrees (left)
+ * Get 7 distances starting at 10 degree (right) increasing by 18 degrees up to 170 degrees (left)
+ * Avoid 0 and 180 degree since at this position the US sensor might see the wheels of the car as an obstacle.
  * aDoFirstValue if false, skip first value since it is the same as last value of last measurement in continuous mode.
  *
  * Wall detection:
@@ -162,20 +100,23 @@ void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoC
  *
  * return true if display of values is managed by function itself
  */
-bool fillForwardDistancesInfo(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues,
-bool aDoFirstValue) {
+bool fillForwardDistancesInfo(bool aShowValues, bool aDoFirstValue) {
 
     color16_t tColor;
 
 // Values for forward scanning
-    uint8_t tActualDegrees = 0;
-    int8_t tDegreeIncrement = DEGREES_PER_STEP;
+    // Quick hack for scanning from 10 to 170 degree to avoid to detect my own wheels
+//    uint8_t tActualDegrees = 0;
+//    int8_t tDegreeIncrement = DEGREES_PER_STEP;
+    uint8_t tActualDegrees = 10;
+    int8_t tDegreeIncrement = 18;
     int8_t tIndex = 0;
     int8_t tIndexDelta = 1;
-    if (sLastServoAngleInDegrees >= 180) {
+    if (sLastServoAngleInDegrees >= 170) {
 // values for backward scanning
-        tActualDegrees = 180;
-        tDegreeIncrement = -(DEGREES_PER_STEP);
+//        tActualDegrees = 180;
+        tActualDegrees = 170;
+        tDegreeIncrement = -(tDegreeIncrement);
         tIndex = STEPS_PER_180_DEGREES;
         tIndexDelta = -1;
     }
@@ -194,16 +135,16 @@ bool aDoFirstValue) {
          * Reasonable value is between 2 and 3 at 20 degrees and tWaitDelayforServo = tDeltaDegrees * 5
          * Reasonable value is between 10 and 20 degrees and tWaitDelayforServo = tDeltaDegrees * 4 => avoid it
          */
-        US_ServoWrite(tActualDegrees + 3, true);
+        US_ServoWriteAndDelay(tActualDegrees + 3, true);
 
-        unsigned int tDistance = getUSDistanceAsCentiMeterWithCentimeterTimeout(US_TIMEOUT_CENTIMETER_PRO);
+        unsigned int tDistance = getUSDistanceAsCentiMeterWithCentimeterTimeout(US_TIMEOUT_CENTIMETER);
 
         if (((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tDistance <= sCountPerScan)
-                || (!(sRunAutonomousDrive || sRunOwnTest))) {
+                || (!sRunAutonomousDrive)) {
             /*
              * Emergency stop
              */
-            myCar.stopCar();
+            RobotCar.stopCar();
         }
 
         if (aShowValues) {
@@ -211,7 +152,7 @@ bool aDoFirstValue) {
              * Determine color
              */
             tColor = COLOR_ORANGE;
-            if (tDistance >= US_TIMEOUT_CENTIMETER_PRO || tDistance > sCountPerScan) {
+            if (tDistance >= US_TIMEOUT_CENTIMETER || tDistance > sCountPerScan) {
                 tColor = COLOR_GREEN;
             } else if (tDistance < sCentimeterPerScan) {
                 tColor = COLOR_RED;
@@ -221,14 +162,14 @@ bool aDoFirstValue) {
              * Clear old and draw new line
              */
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
-                    aForwardDistancesInfo->RawDistancesArray[tIndex], tActualDegrees, COLOR_WHITE, 3);
+                    sForwardDistancesInfo.RawDistancesArray[tIndex], tActualDegrees, COLOR_WHITE, 3);
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tActualDegrees, tColor,
                     3);
         }
         /*
          * Store value and search for min and max
          */
-        aForwardDistancesInfo->RawDistancesArray[tIndex] = tDistance;
+        sForwardDistancesInfo.RawDistancesArray[tIndex] = tDistance;
 
         tIndex += tIndexDelta;
         tActualDegrees += tDegreeIncrement;
@@ -239,25 +180,25 @@ bool aDoFirstValue) {
 /*
  * Find min and max value. Prefer the headmost value if we have more than one choice
  */
-void doPostProcess(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
+void doPostProcess() {
     unsigned int tMax = 0;
     unsigned int tMin = __UINT16_MAX__; // = 65535
     for (uint8_t i = 0; i < (NUMBER_OF_DISTANCES + 1) / 2; ++i) {
-        uint8_t tDistance = aForwardDistancesInfo->ProcessedDistancesArray[i];
+        uint8_t tDistance = sForwardDistancesInfo.ProcessedDistancesArray[i];
         uint8_t tActualIndex = i;
         for (int j = 0; j < 2; ++j) {
             if (tDistance >= tMax) {
                 tMax = tDistance;
-                aForwardDistancesInfo->IndexOfMaxDistance = tActualIndex;
-                aForwardDistancesInfo->MaxDistance = tDistance;
+                sForwardDistancesInfo.IndexOfMaxDistance = tActualIndex;
+                sForwardDistancesInfo.MaxDistance = tDistance;
             }
             if (tDistance <= tMin) {
                 tMin = tDistance;
-                aForwardDistancesInfo->IndexOfMinDistance = tActualIndex;
-                aForwardDistancesInfo->MinDistance = tDistance;
+                sForwardDistancesInfo.IndexOfMinDistance = tActualIndex;
+                sForwardDistancesInfo.MinDistance = tDistance;
             }
             tActualIndex = STEPS_PER_180_DEGREES - i;
-            tDistance = aForwardDistancesInfo->ProcessedDistancesArray[tActualIndex];
+            tDistance = sForwardDistancesInfo.ProcessedDistancesArray[tActualIndex];
         }
     }
 }
@@ -338,19 +279,19 @@ uint8_t computeNeigbourValue(uint8_t a20DegreeValue, uint8_t a40DegreeValue, uin
  * The (invalid) values 20 degrees right and left of these samples are then extrapolated by computeNeigbourValue().
  *
  */
-void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues) {
+void doWallDetection(bool aShowValues) {
     uint8_t tTempDistancesArray[NUMBER_OF_DISTANCES];
     /*
      * First copy all raw values
      */
-    memcpy(tTempDistancesArray, aForwardDistancesInfo->RawDistancesArray, NUMBER_OF_DISTANCES);
+    memcpy(tTempDistancesArray, sForwardDistancesInfo.RawDistancesArray, NUMBER_OF_DISTANCES);
     uint8_t tLastValue = tTempDistancesArray[0];
     uint8_t tActualValue = tTempDistancesArray[1];
     uint8_t tNextValue;
     uint8_t tActualDegrees = 2 * DEGREES_PER_STEP;
     int8_t tDegreeFromNeigbour;
-    sWallRightDegrees = 0;
-    sWallLeftDegrees = 0;
+    sForwardDistancesInfo.WallRightAngleDegree = 0;
+    sForwardDistancesInfo.WallLeftAngleDegree = 0;
 
     /*
      * check values at i and i-1 and adjust value at i+1
@@ -365,20 +306,20 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
 
             // use computeNeigbourValue the other way round
             // i.e. put 20 degrees to 40 degrees parameter and vice versa in order to take the 0 degrees value as the 60 degrees one
-            uint8_t tNextValueComputed = computeNeigbourValue(tActualValue, tLastValue, US_TIMEOUT_CENTIMETER_PRO,
+            uint8_t tNextValueComputed = computeNeigbourValue(tActualValue, tLastValue, US_TIMEOUT_CENTIMETER,
                     &tDegreeFromNeigbour);
             if (tNextValue > tNextValueComputed + 5) {
-                BlueDisplay1.debug("i=", i);
-                BlueDisplay1.debug("fwddegrees=", tDegreeFromNeigbour);
+//                BlueDisplay1.debug("i=", i);
+//                BlueDisplay1.debug("fwddegrees=", tDegreeFromNeigbour);
                 // degrees of computed value - returned wall degrees seen from (degrees of computed value)
                 int tWallForwardDegrees = ((i + 1) * DEGREES_PER_STEP) - tDegreeFromNeigbour;
-                BlueDisplay1.debug("wall forw degrees=", tWallForwardDegrees);
+//                BlueDisplay1.debug("wall forw degrees=", tWallForwardDegrees);
                 if (tWallForwardDegrees <= 90) {
                     // wall at right
-                    sWallRightDegrees = tWallForwardDegrees;
+                    sForwardDistancesInfo.WallRightAngleDegree = tWallForwardDegrees;
                 } else {
                     // wall at left
-                    sWallLeftDegrees = 180 - tWallForwardDegrees;
+                    sForwardDistancesInfo.WallLeftAngleDegree = 180 - tWallForwardDegrees;
                 }
 
                 //Adjust and draw next value if original value is greater
@@ -399,7 +340,7 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
     /*
      * Go backwards through the array
      */
-    memcpy(aForwardDistancesInfo->ProcessedDistancesArray, tTempDistancesArray, NUMBER_OF_DISTANCES);
+    memcpy(sForwardDistancesInfo.ProcessedDistancesArray, tTempDistancesArray, NUMBER_OF_DISTANCES);
 
     tLastValue = tTempDistancesArray[STEPS_PER_180_DEGREES];
     tActualValue = tTempDistancesArray[STEPS_PER_180_DEGREES - 1];
@@ -412,9 +353,9 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
         tNextValue = tTempDistancesArray[i - 1];
 
 // Do it only if none of the 3 values are processed before
-        if (tTempDistancesArray[i + 1] == aForwardDistancesInfo->RawDistancesArray[i + 1]
-                && tTempDistancesArray[i] == aForwardDistancesInfo->RawDistancesArray[i]
-                && tNextValue == aForwardDistancesInfo->RawDistancesArray[i - 1]) {
+        if (tTempDistancesArray[i + 1] == sForwardDistancesInfo.RawDistancesArray[i + 1]
+                && tTempDistancesArray[i] == sForwardDistancesInfo.RawDistancesArray[i]
+                && tNextValue == sForwardDistancesInfo.RawDistancesArray[i - 1]) {
 
             /*
              * check values at i+1 and i and adjust value at i-11
@@ -423,27 +364,27 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
                 /*
                  * Wall detected -> adjust adjacent values
                  */
-                uint8_t tNextValueComputed = computeNeigbourValue(tActualValue, tLastValue, US_TIMEOUT_CENTIMETER_PRO,
+                uint8_t tNextValueComputed = computeNeigbourValue(tActualValue, tLastValue, US_TIMEOUT_CENTIMETER,
                         &tDegreeFromNeigbour);
                 if (tNextValue > tNextValueComputed + 5) {
-                    BlueDisplay1.debug("i=", i);
-                    BlueDisplay1.debug("backdegrees=", tDegreeFromNeigbour);
+//                    BlueDisplay1.debug("i=", i);
+//                    BlueDisplay1.debug("backdegrees=", tDegreeFromNeigbour);
                     // only left and front
                     int tWallBackwardDegrees = (180 - ((i - 1) * DEGREES_PER_STEP)) - tDegreeFromNeigbour;
-                    BlueDisplay1.debug("wall back degrees=", tWallBackwardDegrees);
+//                    BlueDisplay1.debug("wall back degrees=", tWallBackwardDegrees);
                     if (tWallBackwardDegrees <= 90) {
                         // wall at left - overwrite only if greater
-                        if (sWallLeftDegrees < tWallBackwardDegrees) {
-                            sWallLeftDegrees = tWallBackwardDegrees;
+                        if (sForwardDistancesInfo.WallLeftAngleDegree < tWallBackwardDegrees) {
+                            sForwardDistancesInfo.WallLeftAngleDegree = tWallBackwardDegrees;
                         }
-                    } else if (sWallRightDegrees < (180 - tWallBackwardDegrees)) {
+                    } else if (sForwardDistancesInfo.WallRightAngleDegree < (180 - tWallBackwardDegrees)) {
                         // wall at right - overwrite only if greater
-                        sWallRightDegrees = 180 - tWallBackwardDegrees;
-                        BlueDisplay1.debug("sWallRightDegree=", sWallRightDegrees);
+                        sForwardDistancesInfo.WallRightAngleDegree = 180 - tWallBackwardDegrees;
+                        BlueDisplay1.debug("sWallRightDegree=", sForwardDistancesInfo.WallRightAngleDegree);
 
                     }
                     //Adjust and draw next value if original value is greater
-                    aForwardDistancesInfo->ProcessedDistancesArray[i - 1] = tNextValueComputed;
+                    sForwardDistancesInfo.ProcessedDistancesArray[i - 1] = tNextValueComputed;
                     tNextValue = tNextValueComputed;
                     if (aShowValues) {
                         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
@@ -457,7 +398,7 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
         tActualDegrees -= DEGREES_PER_STEP;
 
     }
-    doPostProcess(aForwardDistancesInfo);
+    doPostProcess();
 }
 
 #define GO_BACK_AND_SCAN_AGAIN 360
@@ -465,10 +406,10 @@ void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aSh
  * Checks distances and returns degrees to turn
  * 0 -> no turn, > 0 -> turn left, < 0 -> turn right, > 360 go back, since too close to wall
  */
-int doCollisionDetectionPro(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
+int doBuiltInCollisionDetection() {
     int tDegreeToTurn = 0;
     // 5 is too low
-    if (aForwardDistancesInfo->MinDistance < 7) {
+    if (sForwardDistancesInfo.MinDistance < 7) {
         /*
          * Min Distance too small => go back and scan again
          */
@@ -477,53 +418,53 @@ int doCollisionDetectionPro(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
     /*
      * First check if free ahead
      */
-    if (aForwardDistancesInfo->ProcessedDistancesArray[INDEX_FORWARD_1] > sCountPerScan
-            && aForwardDistancesInfo->ProcessedDistancesArray[INDEX_FORWARD_2] > sCountPerScan) {
+    if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_1] > sCountPerScan
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_2] > sCountPerScan) {
         /*
          * Free ahead, check if our side is near to the wall and make corrections
          */
-        if (sWallRightDegrees != 0 || sWallLeftDegrees != 0) {
+        if (sForwardDistancesInfo.WallRightAngleDegree != 0 || sForwardDistancesInfo.WallLeftAngleDegree != 0) {
             /*
              * Wall detected
              */
-            if (sWallRightDegrees > sWallLeftDegrees) {
+            if (sForwardDistancesInfo.WallRightAngleDegree > sForwardDistancesInfo.WallLeftAngleDegree) {
                 /*
                  * Wall at right => turn left
                  */
-                tDegreeToTurn = sWallRightDegrees;
+                tDegreeToTurn = sForwardDistancesInfo.WallRightAngleDegree;
             } else {
                 /*
                  * Wall at left => turn right
                  */
-                tDegreeToTurn = -sWallLeftDegrees;
+                tDegreeToTurn = -sForwardDistancesInfo.WallLeftAngleDegree;
             }
 
         }
     } else {
-        if (sWallRightDegrees != 0 || sWallLeftDegrees != 0) {
+        if (sForwardDistancesInfo.WallRightAngleDegree != 0 || sForwardDistancesInfo.WallLeftAngleDegree != 0) {
             /*
              * Wall detected
              */
-            if (sWallRightDegrees > sWallLeftDegrees) {
+            if (sForwardDistancesInfo.WallRightAngleDegree > sForwardDistancesInfo.WallLeftAngleDegree) {
                 /*
                  * Wall at right => turn left
                  */
-                tDegreeToTurn = sWallRightDegrees;
+                tDegreeToTurn = sForwardDistancesInfo.WallRightAngleDegree;
             } else {
                 /*
                  * Wall at left => turn right
                  */
-                tDegreeToTurn = -sWallLeftDegrees;
+                tDegreeToTurn = -sForwardDistancesInfo.WallLeftAngleDegree;
             }
         } else {
             /*
              * Not free ahead, must turn, check if another forward direction is suitable
              */
-            if (aForwardDistancesInfo->MaxDistance > sCountPerScan) {
+            if (sForwardDistancesInfo.MaxDistance > sCountPerScan) {
                 /*
                  * Go to max distance
                  */
-                tDegreeToTurn = aForwardDistancesInfo->IndexOfMaxDistance * DEGREES_PER_STEP - 90;
+                tDegreeToTurn = sForwardDistancesInfo.IndexOfMaxDistance * DEGREES_PER_STEP - 90;
             } else {
                 /*
                  * Max distances are all too short => must go back / turn by 180 degree
@@ -535,16 +476,24 @@ int doCollisionDetectionPro(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
     return tDegreeToTurn;
 }
 
-void driveAutonomous(bool (*afillForwardDistancesInfoFunction)(ForwardDistancesInfoStruct*, bool,
-bool), int (*aCollisionDetectionFunction)(ForwardDistancesInfoStruct*)) {
+/*
+ * Do one step of autonomous driving
+ * Compute sNextDegreesToTurn AFTER the movement to be able to stop before next turn
+ * 1. Check for step conditions if step should happen
+ *
+ */
+void driveAutonomousOneStep(bool (*aFillForwardDistancesInfoFunction)(bool, bool), int (*aCollisionDetectionFunction)()) {
 
+    /*
+     * 1. Check for step conditions if step should happen
+     */
     if (sStepMode == MODE_CONTINUOUS || (sStepMode == MODE_SINGLE_STEP && sDoStep)
-            || (sStepMode == MODE_STEP && (!myCar.isStopped() || sDoStep))) {
+            || (sStepMode == MODE_STEP_TO_NEXT_TURN && (!RobotCar.isStopped() || sDoStep))) {
         /*
-         * Driving is enabled here
+         * Do one step
          */
-        bool tJustStarted = sDoStep;
-        sDoStep = false;
+        bool tMovementJustStarted = sDoStep; // tMovementJustStarted is needed for speeding up US scanning
+        sDoStep = false; // Now it can be set again by GUI
 
         /*
          * Handle both step modes here
@@ -552,61 +501,64 @@ bool), int (*aCollisionDetectionFunction)(ForwardDistancesInfoStruct*)) {
         int sLastDisplayedDegreeToTurn = sNextDegreesToTurn;
         if (sStepMode == MODE_SINGLE_STEP) {
             /*
-             * SINGLE_STEP -> turn and go fixed distance
+             * SINGLE_STEP -> optional turn and go fixed distance
              */
             if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
-                myCar.goDistanceCentimeter(-10, &loopGUI);
+                RobotCar.goDistanceCentimeter(-10, &loopGUI);
             } else {
-                myCar.rotateCar(sNextDegreesToTurn); // TURN_IN_PLACE
+                RobotCar.rotateCar(sNextDegreesToTurn, sTurnMode);
                 sLastDegreesTurned = sNextDegreesToTurn;
                 sNextDegreesToTurn = 0;
-                myCar.goDistanceCentimeter(CENTIMETER_PER_RIDE_PRO, &loopGUI);
+                RobotCar.goDistanceCentimeter(CENTIMETER_PER_RIDE, &loopGUI);
             }
-        } else if (myCar.isStopped()) {
-            /*
-             * MODE_SINGLE_STEP or MODE_CONTINUOUS: rotation requested -> rotate and start again
-             */
+        } else
+        /*
+         * MODE_STEP_TO_NEXT_TURN or MODE_CONTINUOUS: rotation requested -> rotate and start again
+         */
+        if (RobotCar.isStopped()) {
             if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
-                myCar.goDistanceCentimeter(-10, &loopGUI);
+                RobotCar.goDistanceCentimeter(-10, &loopGUI);
             } else {
-                myCar.rotateCar(sNextDegreesToTurn, (uint8_t) TURN_BACKWARD);
+                RobotCar.rotateCar(sNextDegreesToTurn, sTurnMode);
                 // wait to really stop after turning
                 delay(100);
                 sLastDegreesTurned = sNextDegreesToTurn;
                 sNextDegreesToTurn = 0;
-                myCar.startAndWaitForFullSpeed();
-                tJustStarted = true;
+                RobotCar.startAndWaitForFullSpeed();
+                tMovementJustStarted = true;
 //            delay(100);
             }
         }
 
-        bool tActualPageIsAutomaticControl = (sActualPage == PAGE_AUTOMATIC_CONTROL);
+        /*
+         * Here car has moved
+         */
 
+        bool tActualPageIsAutomaticControl = (sActualPage == PAGE_AUTOMATIC_CONTROL);
         if (tActualPageIsAutomaticControl && ((sLastDisplayedDegreeToTurn + 10) % DEGREES_PER_STEP) != 0) {
             /*
              * Clear old decision marker by redrawing it with a white line if not overlapped with a distance bar at 10, 30, 50, 70, 90 degree
              */
-            drawCollisionDecision(sLastDisplayedDegreeToTurn, CENTIMETER_PER_RIDE_PRO, true);
+            drawCollisionDecision(sLastDisplayedDegreeToTurn, CENTIMETER_PER_RIDE, true);
         }
 
-        uint16_t tStartCount = myCar.leftMotorControl.DistanceCount;
+        uint16_t tStartCount = leftEncoderMotor.DistanceCount;
 
         /*
          * The magic happens HERE
          */
-        bool tInfoWasProcessed = afillForwardDistancesInfoFunction(&ForwardDistancesInfo, tActualPageIsAutomaticControl,
-                tJustStarted);
-        doWallDetection(&ForwardDistancesInfo, tActualPageIsAutomaticControl);
-        sNextDegreesToTurn = aCollisionDetectionFunction(&ForwardDistancesInfo);
+        bool tInfoWasProcessed = aFillForwardDistancesInfoFunction(tActualPageIsAutomaticControl, tMovementJustStarted);
+        doWallDetection(tActualPageIsAutomaticControl);
+        sNextDegreesToTurn = aCollisionDetectionFunction();
 
         /*
          * compute distance driven for one 180 degrees scan
          */
-        if (!myCar.isStopped()) {
+        if (!RobotCar.isStopped()) {
             /*
              * No emergency stop here => distance is valid
              */
-            sCountPerScan = myCar.leftMotorControl.DistanceCount - tStartCount;
+            sCountPerScan = leftEncoderMotor.DistanceCount - tStartCount;
             sCentimeterPerScan = sCountPerScan / 2;
             if (tActualPageIsAutomaticControl) {
                 char tStringBuffer[6];
@@ -620,7 +572,7 @@ bool), int (*aCollisionDetectionFunction)(ForwardDistancesInfoStruct*)) {
          * Show distance info if not already done
          */
         if (!tInfoWasProcessed && tActualPageIsAutomaticControl) {
-            drawForwardDistancesInfos(&ForwardDistancesInfo);
+            drawForwardDistancesInfos();
         }
         drawCollisionDecision(sNextDegreesToTurn, sCentimeterPerScan, false);
 
@@ -631,22 +583,22 @@ bool), int (*aCollisionDetectionFunction)(ForwardDistancesInfoStruct*)) {
             /*
              * Stop if rotation requested or single step => insert / update last ride in path
              */
-            myCar.stopCar();
+            RobotCar.stopCar();
             if (sStepMode == MODE_SINGLE_STEP) {
-                insertToPath(CENTIMETER_PER_RIDE_PRO * 2, sLastDegreesTurned, true);
+                insertToPath(CENTIMETER_PER_RIDE * 2, sLastDegreesTurned, true);
             } else {
                 // add last driven distance to path
-                insertToPath(myCar.rightMotorControl.LastRideDistanceCount, sLastDegreesTurned, true);
+                insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
             }
         } else {
             /*
              * just continue => overwrite last path element with actual riding distance and try to synchronize motors
              */
-            insertToPath(myCar.rightMotorControl.DistanceCount, sLastDegreesTurned, false);
-            myCar.rightMotorControl.synchronizeMotor(&myCar.leftMotorControl, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+            insertToPath(rightEncoderMotor.DistanceCount, sLastDegreesTurned, false);
+            rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
         }
         if (sActualPage == PAGE_SHOW_PATH) {
-            DrawPath();
+            drawPathInfoPage();
         }
     }
 

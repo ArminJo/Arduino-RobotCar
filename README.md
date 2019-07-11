@@ -8,7 +8,7 @@ Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the Blu
 
 Just overwrite the 2 functions fillForwardDistancesInfoSimple() and doCollisionDetectionSimple() to test your own skill.
 
-#Pictures
+# Pictures
 2 wheel car
 ![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/2WheelDriveCar.jpg)
 4 wheel car
@@ -20,7 +20,7 @@ Servo mounting
 VIN sensing
 ![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/SensingVIn.jpg)
 
-#SCREENSHOTS
+# SCREENSHOTS
 Manual control page
 ![Manual control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/ManualControl.png)
 Automatic control page with detected wall at right

@@ -1,5 +1,5 @@
 /*
- * EncoderMotorControl.h
+ * EncoderMotor.h
  *
  *  Created on: 16.09.2016
  *      Author: Armin
@@ -10,9 +10,7 @@
 
 #include <stdint.h>
 
-#ifdef USE_ADAFRUIT_MOTOR_SHIELD
-#include <Adafruit_MotorShield.h>
-#endif
+#include <TB6612DcMotor.h>
 
 /*
  * Encoders generate 110 Hz at max speed => 8 ms per period
@@ -21,6 +19,13 @@
  */
 #define ENCODER_SENSOR_MASK_MILLIS 3
 #define VELOCITY_SCALE_VALUE 500
+
+/*
+ * Default values if EEPROM values are invalid
+ */
+#define DEFAULT_MIN_SPEED   45
+#define DEFAULT_STOP_SPEED  50
+#define DEFAULT_MAX_SPEED   80
 
 /*
  * Motor Control
@@ -60,16 +65,13 @@ struct EepromMotorInfoStruct {
     uint8_t SpeedCompensation;
 };
 
-class EncoderMotorControl {
+class EncoderMotor: TB6612DcMotor {
 public:
 
-    EncoderMotorControl();
-//    virtual ~EncoderMotorControl();
+    EncoderMotor();
+//    virtual ~EncoderMotor();
 
-#ifdef USE_ADAFRUIT_MOTOR_SHIELD
-    void init(Adafruit_DCMotor * aDCMotor);
-    Adafruit_DCMotor * DCMotor;
-#endif
+    void init(uint8_t aMotorNumber);
 
     /*
      * Set values for going a fixed distance
@@ -99,7 +101,7 @@ public:
     /*
      * Computes motor speed compensation value in order to go exactly straight ahead
      */
-    void synchronizeMotor(EncoderMotorControl * aOtherMotorControl, uint16_t aCheckInterval);
+    void synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t aCheckInterval);
     /*
      * Generates a rising ramp and detects the first movement -> this sets dead band / minimum Speed
      */
@@ -114,10 +116,11 @@ public:
      * Encoder interrupt handling
      */
     void handleEncoderInterrupt();
+    static void enableBothInterruptsOnBothEdges();
     static void enableInterruptOnBothEdges(uint8_t aIntPinNumber);
 
     /*
-     * Static convenience functions. If you have 2 motor, better use CarControl
+     * Static convenience functions. If you have 2 motors, better use CarControl
      */
     static void updateAllMotors();
     static void setDirectionForAll(bool goForward);
@@ -137,7 +140,7 @@ public:
     /*
      * List for access to all motorControls
      */
-    static EncoderMotorControl *sMotorControlListStart; // Root pointer to list of all motorControls
+    static EncoderMotor *sMotorControlListStart; // Root pointer to list of all motorControls
     static uint8_t sNumberOfMotorControls;
     // for display control
     volatile static bool DistanceTickCounterHasChanged;
@@ -145,10 +148,10 @@ public:
     static bool ValuesHaveChanged;
     static bool EnableValuesPrint;
 
-    EncoderMotorControl * NextMotorControl;
+    EncoderMotor * NextMotorControl;
 
     // number of this object starting with 0. Used for eeprom storage of parameters of more than one motorControl.
-    uint8_t myNumber;
+    uint8_t EncoderMotorNumber;
 
     /*
      * Minimum speed setting at which motor starts moving. Depend on actual voltage, load and surface.
@@ -162,10 +165,11 @@ public:
     // maximum speed - TODO 0xFF should be working
     uint8_t MaxSpeed;
     // positive value to be subtracted from TargetSpeed to get ActualSpeed to compensate for different left and right motors
+    // actually SpeedCompensation is in steps of 2 and only one motor can have a positive value, the other has zero.
     uint8_t SpeedCompensation;
 
     /*
-     * Reset() resets all members from ActualSpeed to (including) Debug
+     * Reset() resets all members from ActualSpeed to (including) Debug to 0
      */
     uint8_t ActualSpeed;
     volatile int16_t ActualVelocity;
@@ -181,7 +185,7 @@ public:
     uint16_t LastRideDistanceCount;
 
     /*
-     * Distance optocoupler impulse counter. is reset at initGoDistanceCount if motor was stopped.
+     * Distance optocoupler impulse counter. It is reset at initGoDistanceCount if motor was stopped.
      */
     volatile uint16_t DistanceCount;
     // used for debouncing and lock/timeout  detection

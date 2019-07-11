@@ -9,7 +9,7 @@
 #ifndef SRC_AUTONOMOUSDRIVE_H_
 #define SRC_AUTONOMOUSDRIVE_H_
 
-//#include "Servo.h"
+#include <Servo.h>
 #include <stdint.h>
 
 #define DEGREES_PER_STEP 20
@@ -28,9 +28,12 @@ struct ForwardDistancesInfoStruct {
     uint8_t IndexOfMinDistance;
     uint8_t MaxDistance;
     uint8_t MinDistance;
+    // 0 degrees => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
+    int8_t WallRightAngleDegree;
+    int8_t WallLeftAngleDegree;
 };
 
-extern ForwardDistancesInfoStruct ForwardDistancesInfo;
+extern ForwardDistancesInfoStruct sForwardDistancesInfo;
 
 /*
  * Used for adaptive collision detection
@@ -38,32 +41,30 @@ extern ForwardDistancesInfoStruct ForwardDistancesInfo;
 extern int sLastDecisionDegreesToTurnForDisplay;
 extern int sNextDegreesToTurn;
 extern int sLastDegreesTurned;
+
+extern Servo USDistanceServo;
 extern uint8_t sLastServoAngleInDegrees; // needed for optimized delay for servo repositioning
 
 extern uint8_t sCountPerScan;
 extern uint8_t sCentimeterPerScan; // = sCountPerScan / 2
 
-void drawForwardDistancesInfos(ForwardDistancesInfoStruct* aForwardDistancesInfo);
-void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClear);
-
-void US_ServoWrite(uint8_t aValue, bool doDelay = false);
+void initUSServo();
+void US_ServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
 
 /*
- * Values for pro implementation
+ * Values for included implementation
  */
-const int CENTIMETER_PER_RIDE_PRO = 25;
+const int CENTIMETER_PER_RIDE = 25;
 
 // do not measure and process distances greater than 100 cm
-#define US_TIMEOUT_CENTIMETER_PRO 100
+#define US_TIMEOUT_CENTIMETER 100
 
 // I measured ca. 110 ms
 const int MILLIS_FOR_SERVO_20_DEGREES = 120;
 
-void clearPrintedForwardDistancesInfos();
-bool fillForwardDistancesInfo(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues, bool aDoFirstValue);
-void doWallDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues);
-int doCollisionDetectionPro(ForwardDistancesInfoStruct* aForwardDistancesInfo);
-void driveAutonomous(bool (*afillForwardDistancesInfoFunction)(ForwardDistancesInfoStruct*, bool, bool),
-        int (*aCollisionDetectionFunction)(ForwardDistancesInfoStruct*));
+bool fillForwardDistancesInfo(bool aShowValues, bool aDoFirstValue);
+void doWallDetection(bool aShowValues);
+int doBuiltInCollisionDetection();
+void driveAutonomousOneStep(bool (*afillForwardDistancesInfoFunction)(bool, bool), int (*aCollisionDetectionFunction)());
 
 #endif /* SRC_AUTONOMOUSDRIVE_H_ */

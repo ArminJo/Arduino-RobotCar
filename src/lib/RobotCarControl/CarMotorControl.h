@@ -1,16 +1,17 @@
 /*
- * CarControl.h
+ * CarMotorControl.h
+ *
+ *  Motor control for a car with 2 encoder motors
  *
  *  Created on: 16.09.2016
  *      Author: Armin
  */
 
-#ifndef SRC_CARCONTROL_H_
-#define SRC_CARCONTROL_H_
+#ifndef CARMOTORCONTROL_H_
+#define CARMOTORCONTROL_H_
 
+#include <EncoderMotor.h>
 #include <stdint.h>
-//#include <Adafruit_MotorShield.h>
-#include "EncoderMotorControl.h"
 
 /*
  * Some factors depending on wheel diameter and encoder resolution
@@ -24,20 +25,16 @@
 #define TURN_BACKWARD 1
 #define TURN_IN_PLACE 2
 
-/*
- * Car Control
- */
-
-class CarControl {
+class CarMotorControl {
 public:
 
-    CarControl();
-//    virtual ~CarControl();
+    CarMotorControl();
+//    virtual ~CarMotorControl();
 
     void init(uint8_t aPinFor2WDDetection);
 
     /*
-     * Functions, which directly call EncoderMotorControl functions for both motors
+     * Functions, which directly call EncoderMotor functions for both motors
      */
     void setSpeedCompensated(uint8_t aSpeed);
     //This stops motors
@@ -65,8 +62,8 @@ public:
     /*
      * Rotation with wait
      */
-    void initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirection = TURN_IN_PLACE, bool aUseSlowSpeed = true);
-    void rotateCar(int16_t aRotationDegrees, uint8_t aTurnDirection = TURN_IN_PLACE, bool aUseSlowSpeed = true);
+    void initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirection, bool aUseSlowSpeed = true);
+    void rotateCar(int16_t aRotationDegrees, uint8_t aTurnDirection, bool aUseSlowSpeed = true);
     void rotateCar(int16_t aRotationDegrees, void (*aLoopCallback)(void), uint8_t aTurnDirection = TURN_IN_PLACE,
             bool aUseSlowSpeed = true);
 
@@ -78,12 +75,14 @@ public:
     void waitUntilCarStopped();
     void waitUntilCarStopped(void (*aLoopCallback)(void));
 
-    EncoderMotorControl rightMotorControl;
-    EncoderMotorControl leftMotorControl;
+
     // true if forward
     bool isDirectionForward;
     //
     bool is2WDCar;
 };
 
-#endif /* SRC_CARCONTROL_H_ */
+extern EncoderMotor rightEncoderMotor;
+extern EncoderMotor leftEncoderMotor;
+
+#endif /* CARMOTORCONTROL_H_ */

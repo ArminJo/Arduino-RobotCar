@@ -3,7 +3,7 @@
  *  Enables autonomous driving of a 2 or 4 wheel car with an Arduino and a Adafruit Motor Shield V2.
  *  To avoid obstacles a HC-SR04 Ultrasonic sensor mounted on a SG90 Servo continuously scans the area.
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
- *  Just overwrite the 2 functions myOwnFillForwardDistancesInfo() and myOwnDoCollisionDetection() to test your own skill.
+ *  Just overwrite the 2 functions myOwnFillForwardDistancesInfo() and doUserCollisionDetection() to test your own skill.
  *
  *  Copyright (C) 2016  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
@@ -21,179 +21,267 @@
 #include <Arduino.h>
 
 #include <digitalWriteFast.h>
-#include <LightweightServo.h>
+#include <EncoderMotor.h>
 #include <HCSR04.h>
-
-#include <EncoderMotorControl.h>
 
 #include "AutonomousDrive.h"
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
 
+#ifdef USE_TB6612_BREAKOUT_BOARD
+#include <PlayRtttl.h>
+#endif
+
+#define VERSION_EXAMPLE "1.0"
+
 /*
  * Car Control
  */
-CarControl myCar;
+CarMotorControl RobotCar;
+float sVINVoltage;
+void checkForLowVoltage();
+
+#ifdef ENABLE_RTTTL
+bool sPlayMelody = false;
+void playRandomMelody();
+#endif
+
+void initLaserServos();
 
 void setup() {
-// initialize the digital pin as an output.
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
+// initialize digital pins as an output.
+    pinMode(TRIGGER_OUT_PIN, OUTPUT);
+    pinMode(LASER_OUT_PIN, OUTPUT);
+    initUSDistancePins(TRIGGER_OUT_PIN, ECHO_IN_PIN);
+
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    pinMode(CAMERA_SUPPLY_CONTROL_PIN, OUTPUT);
+#endif
 
     /*
      * For slot type optocoupler interrupts on pin PD2 + PD3
      */
-    pinMode(RIGHT_ENCODER_PIN, INPUT);
-    pinMode(LEFT_ENCODER_PIN, INPUT);
+    EncoderMotor::enableBothInterruptsOnBothEdges();
+    EncoderMotor::EnableValuesPrint = true;
 
-    pinMode(TRIGGER_OUT_PIN, OUTPUT);
-    pinMode(DEBUG_OUT_PIN, OUTPUT);
-    initUSDistancePins(TRIGGER_OUT_PIN, ECHO_IN_PIN);
-
-    EncoderMotorControl::enableInterruptOnBothEdges(INT0);
-    EncoderMotorControl::enableInterruptOnBothEdges(INT1);
-    EncoderMotorControl::EnableValuesPrint = true;
-
-#ifdef DISABLE_SERVO_TIMER_AUTO_INITIALIZE
-    initLightweightServoPin9And10();
-#endif
-    // set Laser Servo
-    write10(90);
-    // set ultrasonic servo
-    US_ServoWrite(90);
+    initLaserServos();
+    initUSServo();
 
 // initialize motors
-    myCar.init(TWO_WD_DETECTION_PIN);
+    RobotCar.init(TWO_WD_DETECTION_PIN);
+
 // reset all values
-    resetGUIControls();
     resetPathData();
 
     setupGUI();
 
+    // Just to know which program is running on my Arduino
+    BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
+
+    readVINVoltage();
+    randomSeed(sVINVoltage * 10000);
 }
 
 void loop() {
-    digitalToggleFast(LED_BUILTIN);
-    if (!BlueDisplay1.isConnectionEstablished()) {
-        if (millis() > 15000) {
-            /*
-             * Start automatically if no Bluetooth connection
-             */
-            doStartStopAutomomousDrive(NULL, true);
-        }
+    checkForLowVoltage();
+
+    // check if just timeout, no Bluetooth connection and connected to LIPO battery
+    if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < 11000) && (millis() > 10000)
+            && (sVINVoltage > VOLTAGE_USB_THRESHOLD)) {
+        /*
+         * Timeout just reached, play melody and start autonomous drive
+         */
+#ifdef ENABLE_RTTTL
+        playRandomMelody();
+        delayAndLoopGUI(1000);
+#else
+        delayAndLoopGUI(6000);
+#endif
+        startStopAutomomousDrive(true, true);
     }
 
     /*
-     * check for user input
+     * check for user input and update display output
      */
     loopGUI();
 
-    if (sActualPage == PAGE_MANUAL_CONTROL && sStarted) {
-        /*
-         * Direct control by GUI
-         */
-        myCar.updateMotors();
-        myCar.rightMotorControl.synchronizeMotor(&myCar.leftMotorControl, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+#ifdef ENABLE_RTTTL
+    /*
+     * check for playing melody
+     */
+    if (sPlayMelody) {
+        RobotCar.resetAndShutdownMotors();
+        playRandomMelody();
     }
 
-    /*
-     * Test loops
-     */
-    if (sRunOwnTest || sRunAutonomousDrive) {
-        bool (*tfillForwardDistancesInfoFunction)(ForwardDistancesInfoStruct*, bool, bool);
-        int (*tCollisionDetectionFunction)(ForwardDistancesInfoStruct*);
-        if (sRunOwnTest) {
-            tfillForwardDistancesInfoFunction = &myOwnFillForwardDistancesInfo;
-            tCollisionDetectionFunction = &myOwnDoCollisionDetection;
+#endif
+
+    if (sStarted && (sActualPage == PAGE_HOME || sActualPage == PAGE_TEST)) {
+        /*
+         * Direct speed control by GUI
+         */
+        RobotCar.updateMotors();
+        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+    }
+
+    if (sRunAutonomousDrive) {
+        /*
+         * Start autonomous driving
+         */
+        bool (*tfillForwardDistancesInfoFunction)(bool, bool);
+        int (*tCollisionDetectionFunction)();
+        tfillForwardDistancesInfoFunction = &fillForwardDistancesInfo;
+        if (sUseBuiltInAutonomousDriveStrategy) {
+            tCollisionDetectionFunction = &doBuiltInCollisionDetection;
         } else {
-            tfillForwardDistancesInfoFunction = &fillForwardDistancesInfo;
-            tCollisionDetectionFunction = &doCollisionDetectionPro;
+            tCollisionDetectionFunction = &doUserCollisionDetection;
         }
-        EncoderMotorControl::EnableValuesPrint = false;
-        while (sRunAutonomousDrive || sRunOwnTest) {
-            driveAutonomous(tfillForwardDistancesInfoFunction, tCollisionDetectionFunction);
+        EncoderMotor::EnableValuesPrint = false;
+
+        /*
+         * Autonomous driving main loop
+         */
+        while (sRunAutonomousDrive) {
+            driveAutonomousOneStep(tfillForwardDistancesInfoFunction, tCollisionDetectionFunction);
             /*
-             * check for user input.
+             * check for user input and update display output
              */
             loopGUI();
         }
+
         /*
-         * End of test loops. myCar.isStopped() is true here
+         * Stop autonomous driving. RobotCar.isStopped() is true here
          */
         if (sStepMode != MODE_SINGLE_STEP) {
             // add last driven distance to path
-            insertToPath(myCar.rightMotorControl.LastRideDistanceCount, sLastDegreesTurned, true);
+            insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
         }
 
-        EncoderMotorControl::EnableValuesPrint = true;
-        US_ServoWrite(90);
+        EncoderMotor::EnableValuesPrint = true;
+        US_ServoWriteAndDelay(90);
     }
-}
-
-/*
- * Get 9 distances starting at 0 degree (right) increasing by 20 degree up to 180 degree (left)
- */
-bool myOwnFillForwardDistancesInfo(ForwardDistancesInfoStruct* aForwardDistancesInfo, bool aShowValues,
-bool aDoFirstValue) {
-    int tDegree = 180;
-    int tDelay = 600;
-    for (int i = 0; i < NUMBER_OF_DISTANCES; ++i) {
-        // My servo is top down and therefore inverted
-        tDegree = 180 - tDegree;
-        write10(tDegree);
-        delay(tDelay);
-        tDelay = 100;
-        unsigned int tActualDistance = getUSDistanceAsCentiMeter();
-        /*
-         * Get 9 Distances & Check for Max and Min distances
-         * The 9 Distances are Stored in aForwardDistancesInfo->RawDistancesArray
-         */
-        aForwardDistancesInfo->RawDistancesArray[i] = tActualDistance;
-        tDegree -= DEGREES_PER_STEP;
-    }
-    return false;
 }
 
 /*
  * Checks distances and returns degree to turn
  * 0 -> no turn, >0 -> turn left, <0 -> turn right
  */
-int myOwnDoCollisionDetection(ForwardDistancesInfoStruct* aForwardDistancesInfo) {
+int doUserCollisionDetection() {
 // if left three distances are all less than 21 centimeter then turn right.
-    if (aForwardDistancesInfo->ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
-            && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 1] <= MINIMUM_DISTANCE_TO_SIDE
-            && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 2] <= MINIMUM_DISTANCE_TO_SIDE) {
+    if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 1] <= MINIMUM_DISTANCE_TO_SIDE
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 2] <= MINIMUM_DISTANCE_TO_SIDE) {
         return -90;
         // check right three distances are all less then 21 centimeter than turn left.
-    } else if (ForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT] <= MINIMUM_DISTANCE_TO_SIDE
-            && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 1] <= MINIMUM_DISTANCE_TO_SIDE
-            && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 2] <= MINIMUM_DISTANCE_TO_SIDE) {
+    } else if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT] <= MINIMUM_DISTANCE_TO_SIDE
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 1] <= MINIMUM_DISTANCE_TO_SIDE
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 2] <= MINIMUM_DISTANCE_TO_SIDE) {
         return 90;
         // check front distance is longer then 35 centimeter than do not turn.
-    } else if (ForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_1] >= MINIMUM_DISTANCE_TO_FRONT
-            && ForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_2] >= MINIMUM_DISTANCE_TO_FRONT) {
+    } else if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_1] >= MINIMUM_DISTANCE_TO_FRONT
+            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_2] >= MINIMUM_DISTANCE_TO_FRONT) {
         return 0;
-    } else if (ForwardDistancesInfo.MaxDistance >= MINIMUM_DISTANCE_TO_SIDE) {
+    } else if (sForwardDistancesInfo.MaxDistance >= MINIMUM_DISTANCE_TO_SIDE) {
         /*
          * here front distance is less then 35 centimeter:
          * go to max side distance
          */
         // formula to convert index to degree.
-        return -90 + DEGREES_PER_STEP * ForwardDistancesInfo.IndexOfMaxDistance;
+        return -90 + DEGREES_PER_STEP * sForwardDistancesInfo.IndexOfMaxDistance;
     } else {
         // Turn backwards.
         return 180;
     }
 }
 
-// ISR for PIN PD2 / RIGHT
-ISR(INT0_vect) {
-    myCar.rightMotorControl.handleEncoderInterrupt();
+void readVINVoltage() {
+    float tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
+// assume resistor network of 100k / 10k (divider by 11)
+// tVCC * 0,01181640625
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    // we have a Diode (needs 0.8 Volt) between LIPO and VIN
+    sVINVoltage = ((tVIN * (11.0 * 1.1)) / 1023) + 0.8;
+#else
+    sVINVoltage = (tVIN * (11.0 * 1.1)) / 1023;
+#endif
 }
 
-// ISR for PIN PD3 / LEFT
-ISR(INT1_vect) {
-    myCar.leftMotorControl.handleEncoderInterrupt();
+void checkForLowVoltage() {
+    if (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
+        BlueDisplay1.clearDisplay();
+        BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
+        BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + TEXT_SIZE_33_HEIGHT, F("too low"), TEXT_SIZE_33, COLOR_RED,
+        COLOR_WHITE);
+        drawCommonGui();
+        RobotCar.resetAndShutdownMotors();
+        while (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
+            readAndPrintVinPeriodically();
+            delay(PRINT_VOLTAGE_PERIOD_MILLIS);
+        }
+        // refresh actual page
+        GUISwitchPages(NULL, 0);
+    }
 }
 
+#ifdef ENABLE_RTTTL
+/*
+ * Prepare for tone, use motor as loudspeaker
+ */
+void playRandomMelody() {
+    // this may be reseted by checkAndHandleEvents()
+    sPlayMelody = true;
+    BlueDisplay1.debug("Play melody");
+
+    OCR2B = 0;
+    bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
+    startPlayRandomRtttlFromArrayPGM(MOTOR_0_FORWARD_PIN, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+    while (updatePlayRtttl()) {
+        // check for pause in melody (i.e. timer disabled) and disable motor for this period
+        if ( TIMSK2 & _BV(OCIE2A)) {
+            // timer enabled
+            digitalWriteFast(MOTOR_0_PWM_PIN, HIGH); // re-enable motor
+        } else {
+            // timer disabled
+            digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor for pause in melody
+        }
+        checkAndHandleEvents();
+        if (!sPlayMelody) {
+            BlueDisplay1.debug("Stop melody");
+            break;
+        }
+    }
+    TouchButtonMelody.setValue(false, (sActualPage == PAGE_HOME));
+    digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor
+    bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
+    sPlayMelody = false;
+}
+
+/*
+ * set INVERTED_TONE_PIN to inverse value of TONE_PIN to avoid DC current
+ */
+#ifdef USE_TB6612_BREAKOUT_BOARD
+ISR(TIMER2_COMPB_vect) {
+    digitalToggleFast(13);
+    digitalWriteFast(MOTOR_0_BACKWARD_PIN, !digitalReadFast(MOTOR_0_FORWARD_PIN));
+}
+#endif
+#endif // ENABLE_RTTTL
+
+/*
+ * Laser servo stuff
+ */
+Servo LaserPanServo;
+#ifdef USE_PAN_TILT_SERVO
+Servo LaserTiltServo;
+#endif
+
+void initLaserServos() {
+#ifdef USE_PAN_TILT_SERVO
+    LaserTiltServo.attach(LASER_SERVO_TILT_PIN);
+    LaserTiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
+#endif
+// initialize and set Laser pan servo
+    LaserPanServo.attach(LASER_SERVO_PAN_PIN);
+    LaserPanServo.write(90);
+}
