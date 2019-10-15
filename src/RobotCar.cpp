@@ -200,7 +200,7 @@ void readVINVoltage() {
 // assume resistor network of 100k / 10k (divider by 11)
 // tVCC * 0,01181640625
 #ifdef USE_TB6612_BREAKOUT_BOARD
-    // we have a Diode (needs 0.8 Volt) between LIPO and VIN
+    // we have a Diode (needs 0.8 volt) between LIPO and VIN
     sVINVoltage = ((tVIN * (11.0 * 1.1)) / 1023) + 0.8;
 #else
     sVINVoltage = (tVIN * (11.0 * 1.1)) / 1023;

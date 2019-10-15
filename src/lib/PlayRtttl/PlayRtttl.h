@@ -43,6 +43,9 @@
 
 #define VERSION_PLAY_RTTTL 1.2.2
 /*
+ * Version 1.3.0
+ * - Support all octaves below 8
+ * - New styles '1' to '9' in addition to RTX styles 'C', 'N', 'S'
  * Version 1.2.2
  * - Porting to non AVR architectures
  * Version 1.2.1
@@ -59,11 +62,11 @@
  * - new setNumberOfLoops() and setDefaultStyle() functions.
  */
 
-#define SUPPORT_EXTENSIONS // needs 200 bytes FLASH
-#define SUPPORT_RTX_FORMAT // needs 100 bytes FLASH
+#define SUPPORT_RTX_EXTENSIONS  // needs additional 200 bytes FLASH - support loop and style
+#define SUPPORT_RTX_FORMAT      // needs additional 100 bytes FLASH - can read RTX formatted definitions
 
 #ifdef SUPPORT_RTX_FORMAT
-#define SUPPORT_EXTENSIONS
+#define SUPPORT_RTX_EXTENSIONS
 #endif
 
 #define DEFAULT_DURATION 4
@@ -73,6 +76,9 @@
 #define RTX_STYLE_CONTINUOUS 'C'  // Tone length = note length
 #define RTX_STYLE_NATURAL 'N'     // Tone length = note length - 1/16
 #define RTX_STYLE_STACCATO 'S'    // Tone length = note length - 1/2
+// my extensions :-)
+#define RTX_STYLE_4 '4'           // Tone length = note length - 1/4
+#define RTX_STYLE_8 '8'           // Tone length = note length - 1/8
 #define RTX_STYLE_DEFAULT RTX_STYLE_NATURAL
 #define RTTTL_STYLE_CONTINUOUS 0  // Tone length = note length
 #define RTTTL_STYLE_NATURAL 16     // Tone length = note length - 1/16
@@ -83,7 +89,7 @@
 
 void setTonePinIsInverted(bool aTonePinIsInverted);
 
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
 void setNumberOfLoops(uint8_t aNumberOfLoops);
 void setDefaultStyle(uint8_t aDefaultStyleDivisorValue);
 uint8_t convertStyleCharacterToDivisorValue(char aStyleCharacter);
@@ -142,7 +148,7 @@ struct playRtttlState {
     uint8_t DefaultDuration;
     uint8_t DefaultOctave;
     long TimeForWholeNoteMillis;
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
     uint8_t NumberOfLoops;  // 0 means forever, 1 means we are in the last loop
     // The divisor for the formula: Tone length = note length - note length * (1 / divisor)
     // If 0 then Tone length = note length;
@@ -152,10 +158,25 @@ struct playRtttlState {
 #endif
 };
 
+#ifdef SUPPORT_RTX_EXTENSIONS
+extern uint8_t sDefaultStyleDivisorValue;
+#endif
+
 /*
  * RTTTL format:
+ * Prefix:
+ *  Name
+ *  Colon
+ *  d=Default duration
+ *  o=Default octave
+ *  b=Beats per minutes (of quarter note)
+ *  opt l=Number of loops
+ *  opt s=Style - see line 73 above
+ *  Colon
+ *
+ * Note:
  *  opt duration
- *  note
+ *  note (p = pause)
  *  opt dot to increase duration by half
  *  opt octave
  */
@@ -209,6 +230,8 @@ static const char Smurfs[] PROGMEM
         = "Smurfs:d=32,o=5,b=200:4c#6,16p,4f#6,p,16c#6,p,8d#6,p,8b,p,4g#,16p,4c#6,p,16a#,p,8f#,p,8a#,p,4g#,4p,g#,p,a#,p,b,p,c6,p,4c#6,16p,4f#6,p,16c#6,p,8d#6,p,8b,p,4g#,16p,4c#6,p,16a#,p,8b,p,8f,p,4f#";
 static const char Toccata[] PROGMEM
 ="Toccata:d=4,o=5,b=160:16a4,16g4,1a4,16g4,16f4,16d4,16e4,2c#4,16p,d.4,2p,16a4,16g4,1a4,8e.4,8f.4,8c#.4,2d4";
+static const char Short[] PROGMEM = "Short:d=4,o=3,b=240,s=4:c4,8g,8g,a,g.,b,c4";
+
 /*
  * Array of songs. Useful for random melody
  */
@@ -255,8 +278,7 @@ static const char * const RTTTLChristmasMelodies[] PROGMEM = { JingleBell, Rudol
 #define ARRAY_SIZE_CHRISTMAS_SONGS (sizeof(RTTTLChristmasMelodies)/sizeof(const char *))
 
 extern struct playRtttlState sPlayRtttlState;
-#ifdef SUPPORT_EXTENSIONS
-extern uint8_t sDefaultStyleDivisorValue;
-#endif
+extern const int Notes[] PROGMEM;
+#define NOTES_OCTAVE 7 // Octave of notes contained in Notes array
 
 #endif /* SRC_PLAYRTTTL_H_ */

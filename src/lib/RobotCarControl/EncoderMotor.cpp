@@ -400,7 +400,7 @@ void EncoderMotor::resetAndShutdown() {
  * Special helper functions
  *****************************************************************************************/
 /*
- * minSpeed (at which car starts to move) for 8 Volt is appr. 35 to 40, for 4.3 Volt (USB supply) is appr. 90 to 100
+ * minSpeed (at which car starts to move) for 8 volt is appr. 35 to 40, for 4.3 volt (USB supply) is appr. 90 to 100
  */
 void EncoderMotor::readEeprom() {
     EepromMotorInfoStruct tEepromMotorInfo;

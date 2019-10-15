@@ -41,7 +41,7 @@ BDSlider SliderSpeedLeft;
 char sStringBuffer[128];
 
 void setupGUI(void) {
-#ifdef USE_SIMPLE_SERIAL  // see line 38 in BlueSerial.h - use global #define USE_STANDARD_SERIAL to disable it
+#ifdef USE_SIMPLE_SERIAL  // Comment line 39 in BlueSerial.h or use global #define USE_STANDARD_SERIAL to disable it
     initSimpleSerial(HC_05_BAUD_RATE);
 #else
     Serial.begin(HC_05_BAUD_RATE);
@@ -319,7 +319,7 @@ void readAndPrintVinPeriodically() {
         char tVCCString[6];
         readVINVoltage();
         dtostrf(sVINVoltage, 4, 2, tVCCString);
-        sprintf_P(tDataBuffer, PSTR("%s Volt"), tVCCString);
+        sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
         if (sActualPage == PAGE_HOME) {
             BlueDisplay1.drawText(BUTTON_WIDTH_8_POS_4,
             BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11_DECEND, tDataBuffer,

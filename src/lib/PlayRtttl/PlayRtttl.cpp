@@ -38,16 +38,12 @@
 
 struct playRtttlState sPlayRtttlState;
 
-const int notes[] PROGMEM = { 0,
-NOTE_C4, NOTE_CS4, NOTE_D4, NOTE_DS4, NOTE_E4, NOTE_F4, NOTE_FS4, NOTE_G4, NOTE_GS4, NOTE_A4, NOTE_AS4, NOTE_B4,
-NOTE_C5, NOTE_CS5, NOTE_D5, NOTE_DS5, NOTE_E5, NOTE_F5, NOTE_FS5, NOTE_G5, NOTE_GS5, NOTE_A5, NOTE_AS5, NOTE_B5,
-NOTE_C6, NOTE_CS6, NOTE_D6, NOTE_DS6, NOTE_E6, NOTE_F6, NOTE_FS6, NOTE_G6, NOTE_GS6, NOTE_A6, NOTE_AS6, NOTE_B6,
-NOTE_C7, NOTE_CS7, NOTE_D7, NOTE_DS7, NOTE_E7, NOTE_F7, NOTE_FS7, NOTE_G7, NOTE_GS7, NOTE_A7, NOTE_AS7, NOTE_B7 };
+const int Notes[] PROGMEM = { NOTE_C7, NOTE_CS7, NOTE_D7, NOTE_DS7, NOTE_E7, NOTE_F7, NOTE_FS7, NOTE_G7, NOTE_GS7, NOTE_A7,
+NOTE_AS7, NOTE_B7 };
 
-#define OCTAVE_OFFSET 0
 #define isdigit(n) (n >= '0' && n <= '9')
 
-uint8_t sDefaultStyleDivisorValue = RTTTL_STYLE_DEFAULT; // Natural
+uint8_t sDefaultStyleDivisorValue = RTTTL_STYLE_DEFAULT; // Natural (16)
 
 /*
  * Blocking versions
@@ -90,8 +86,10 @@ void startPlayRtttl(uint8_t aTonePin, char * aRTTTLArrayPtr, void (*aOnComplete)
     sPlayRtttlState.DefaultDuration = DEFAULT_DURATION;
     sPlayRtttlState.DefaultOctave = DEFAULT_OCTAVE;
     sPlayRtttlState.TimeForWholeNoteMillis = (60 * 1000L / DEFAULT_BPM) * 4;
+#ifdef SUPPORT_RTX_EXTENSIONS
     sPlayRtttlState.NumberOfLoops = 1;
     sPlayRtttlState.StyleDivisorValue = sDefaultStyleDivisorValue;
+#endif
 
 #ifdef SUPPORT_RTX_FORMAT
 #ifdef DEBUG
@@ -207,7 +205,7 @@ void startPlayRtttl(uint8_t aTonePin, char * aRTTTLArrayPtr, void (*aOnComplete)
 
     sPlayRtttlState.MillisOfNextAction = 0;
     sPlayRtttlState.NextTonePointer = aRTTTLArrayPtr;
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
     sPlayRtttlState.LastTonePointer = aRTTTLArrayPtr;
 #endif
     sPlayRtttlState.Flags.IsStopped = false;
@@ -263,20 +261,20 @@ bool updatePlayRtttl(void) {
          * Check if end of string reached
          */
         if (tChar == '\0') {
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
             uint8_t tNumberOfLoops = sPlayRtttlState.NumberOfLoops;
             if (tNumberOfLoops > 1) {
                 sPlayRtttlState.NumberOfLoops--;
             }
             if (tNumberOfLoops == 1) {
 #endif
-                // end song
-                stopPlayRtttl();
-                if (sPlayRtttlState.OnComplete != NULL) {
-                    sPlayRtttlState.OnComplete();
-                }
-                return false;
-#ifdef SUPPORT_EXTENSIONS
+            // end song
+            stopPlayRtttl();
+            if (sPlayRtttlState.OnComplete != NULL) {
+                sPlayRtttlState.OnComplete();
+            }
+            return false;
+#ifdef SUPPORT_RTX_EXTENSIONS
             } else {
                 // loop again
 #ifdef DEBUG
@@ -287,7 +285,7 @@ bool updatePlayRtttl(void) {
                 sPlayRtttlState.NextTonePointer = sPlayRtttlState.LastTonePointer;
                 return updatePlayRtttl();
             }
-#endif //  SUPPORT_EXTENSIONS
+#endif //  SUPPORT_RTX_EXTENSIONS
         }
 
         uint8_t tDurationNumber;
@@ -309,40 +307,40 @@ bool updatePlayRtttl(void) {
         tDuration = sPlayRtttlState.TimeForWholeNoteMillis / tDurationNumber;
 
 // now get the note
-        tNote = 0;
+        tNote = 42; // Pause
 #ifdef DEBUG
         tNoteCharUppercase = tChar - 0x20;
 #endif
 
         switch (tChar) {
         case 'c':
-            tNote = 1;
+            tNote = 0;
             break;
         case 'd':
-            tNote = 3;
+            tNote = 2;
             break;
         case 'e':
-            tNote = 5;
+            tNote = 4;
             break;
         case 'f':
-            tNote = 6;
+            tNote = 5;
             break;
         case 'g':
-            tNote = 8;
+            tNote = 7;
             break;
         case 'a':
-            tNote = 10;
+            tNote = 9;
             break;
         case 'b':
         case 'h':  // I have seen this
-            tNote = 12;
+            tNote = 11;
             break;
         case 'p':
         default:
 #ifdef DEBUG
             tNoteCharUppercase = 'P';
 #endif
-            tNote = 0; // pause
+            tNote = 42; // pause
         }
 
         tRTTTLArrayPtr++;
@@ -358,7 +356,7 @@ bool updatePlayRtttl(void) {
             tChar = getNextCharFromRTTLArray(tRTTTLArrayPtr);
         }
 
-// now, get optional '.' dotted note
+// now, get optional '.' of dotted note
         if (tChar == '.') {
             tDuration += tDuration / 2;
 #ifdef DEBUG
@@ -377,8 +375,6 @@ bool updatePlayRtttl(void) {
             tOctave = sPlayRtttlState.DefaultOctave;
         }
 
-        tOctave += OCTAVE_OFFSET;
-
         if (tChar == '.') { 	// believe me I have seen this (e.g. in SilentNight)
             tDuration += tDuration / 2;
             tRTTTLArrayPtr++;
@@ -394,14 +390,14 @@ bool updatePlayRtttl(void) {
          */
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
         unsigned long tDurationOfTone;
-        if (tNote > 0) {
+        if (tNote <= 12) {
 #if defined(__AVR__)
-             int tFrequency = (int) pgm_read_word(&notes[(tOctave - 4) * 12 + tNote]);
+            uint16_t tFrequency = pgm_read_word(&Notes[tNote]) >> (NOTES_OCTAVE - tOctave);
 #else
-             int tFrequency = notes[(tOctave - 4) * 12 + tNote];
-#endif
+            uint16_t tFrequency = Notes[tNote] >> (NOTES_OCTAVE - tOctave);
+#endif // defined(__AVR__)
 
-#if defined (SUPPORT_EXTENSIONS) && !defined(ESP32) // no tone with duration for ESP32
+#if defined (SUPPORT_RTX_EXTENSIONS) && !defined(ESP32) // no tone with duration for ESP32
             if (sPlayRtttlState.StyleDivisorValue != 0) {
                 /*
                  * handle style parameter, compute duration of tone output for note and do rounding for integer division
@@ -416,18 +412,16 @@ bool updatePlayRtttl(void) {
                 ledcWriteTone(0, tFrequency);
 #else
                 tone(sPlayRtttlState.TonePin, tFrequency);
-#endif
-
-#ifdef SUPPORT_EXTENSIONS
+#endif // defined(ESP32)
             }
-#endif
         } else {
             // Play pause, need to handle inverted pin mode here
 #if defined(ESP32)
             ledcWriteTone(0,0);
 #else
             noTone(sPlayRtttlState.TonePin);
-#endif
+#endif // defined(ESP32)
+
             if (sPlayRtttlState.Flags.IsTonePinInverted) {
                 digitalWrite(sPlayRtttlState.TonePin, HIGH);
             }
@@ -438,19 +432,25 @@ bool updatePlayRtttl(void) {
         if (isSharp) {
             Serial.print('#');
         }
-        if (tNote) {
+        if (tNote <= 12) {
             Serial.print(tOctave, 10);
         }
         Serial.print(F(", "));
         Serial.print(tDurationNumber, 10);
 
         Serial.print(F(" | "));
-        Serial.print(notes[(tOctave - 4) * 12 + tNote], 10);
+#if defined(__AVR__)
+        Serial.print(pgm_read_word(&Notes[tNote]) >> (NOTES_OCTAVE - tOctave), 10);
+#else
+        Serial.print(Notes[tNote] >> (NOTES_OCTAVE - tOctave), 10);
+#endif
         Serial.print(F(" Hz for "));
-        if (sPlayRtttlState.StyleDivisorValue != 0 && tNote > 0) {
+#if defined (SUPPORT_RTX_EXTENSIONS)
+        if (sPlayRtttlState.StyleDivisorValue != 0 && tNote <= 12) {
             Serial.print(tDurationOfTone, 10);
             Serial.print(F(" of "));
         }
+#endif
         Serial.print(tDuration, 10);
         Serial.println(F(" ms"));
 
@@ -562,8 +562,10 @@ void startPlayRtttlPGM(uint8_t aTonePin, const char * aRTTTLArrayPtrPGM, void (*
     sPlayRtttlState.DefaultDuration = DEFAULT_DURATION;
     sPlayRtttlState.DefaultOctave = DEFAULT_OCTAVE;
     sPlayRtttlState.TimeForWholeNoteMillis = (60 * 1000L / DEFAULT_BPM) * 4;
+#if defined (SUPPORT_RTX_EXTENSIONS)
     sPlayRtttlState.NumberOfLoops = 1;
     sPlayRtttlState.StyleDivisorValue = sDefaultStyleDivisorValue;
+#endif
 
 #ifdef SUPPORT_RTX_FORMAT
 #ifdef DEBUG
@@ -691,7 +693,7 @@ void startPlayRtttlPGM(uint8_t aTonePin, const char * aRTTTLArrayPtrPGM, void (*
 
     sPlayRtttlState.MillisOfNextAction = 0;
     sPlayRtttlState.NextTonePointer = aRTTTLArrayPtrPGM;
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
     sPlayRtttlState.LastTonePointer = aRTTTLArrayPtrPGM;
 #endif
     sPlayRtttlState.Flags.IsStopped = false;
@@ -770,7 +772,7 @@ void setTonePinIsInverted(bool aTonePinIsInverted) {
     sPlayRtttlState.Flags.IsTonePinInverted = aTonePinIsInverted;
 }
 
-#ifdef SUPPORT_EXTENSIONS
+#ifdef SUPPORT_RTX_EXTENSIONS
 /*
  * 0 means forever
  */
@@ -793,10 +795,12 @@ void setDefaultStyle(uint8_t aDefaultStyleDivisorValue) {
 uint8_t convertStyleCharacterToDivisorValue(char aStyleCharacter) {
     if (aStyleCharacter == RTX_STYLE_STACCATO) {
         return 2;
-    }
-    if (aStyleCharacter == RTX_STYLE_NATURAL) {
+    } else if (aStyleCharacter == RTX_STYLE_NATURAL) {
         return 16;
+    } else if (aStyleCharacter > '0' && aStyleCharacter <= '9') {
+        // convert ASCII to number
+        return aStyleCharacter - '0';
     }
     return 0; // RTX_STYLE_CONTINUOUS
 }
-#endif // SUPPORT_EXTENSIONS
+#endif // SUPPORT_RTX_EXTENSIONS
