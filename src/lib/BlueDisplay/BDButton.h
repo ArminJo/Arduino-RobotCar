@@ -32,7 +32,7 @@
 
 #include <stdint.h>
 
-#ifdef AVR
+#ifdef ARDUINO
 #include <avr/pgmspace.h>
 #include "WString.h"    // for __FlashStringHelper
 #endif
@@ -71,7 +71,7 @@ constexpr int ButtonWidth ( int aNumberOfButtonsPerLine, int aDisplayWidth ) {re
 //
 // for 3 buttons horizontal - dynamic
 #define BUTTON_WIDTH_3_DYN (sActualDisplayWidth/3 - BUTTON_HORIZONTAL_SPACING_DYN)
-#define BUTTON_WIDTH_3_DYN_POS_2 (sActualDisplayWidth/3)
+#define BUTTON_WIDTH_3_DYN_POS_2 (sActualDisplayWidth/3 + (BUTTON_HORIZONTAL_SPACING_DYN / 2))
 #define BUTTON_WIDTH_3_DYN_POS_3 (sActualDisplayWidth - BUTTON_WIDTH_3_DYN)
 
 // width 3.5
@@ -260,7 +260,7 @@ public:
     void activate(void);
     void deactivate(void);
 
-#ifdef AVR
+#ifdef ARDUINO
     void initPGM(uint16_t aPositionX, uint16_t aPositionY, uint16_t aWidthX, uint16_t aHeightY, color16_t aButtonColor,
             const char * aPGMCaption, uint8_t aCaptionSize, uint8_t aFlags, int16_t aValue,
             void (*aOnTouchHandler)(BDButton*, int16_t));

@@ -32,6 +32,10 @@
 #include <Arduino.h>
 #include "BlueDisplay.h"
 
+#if !defined(va_start)
+#include <cstdarg> // for va_start, va_list etc.
+#endif
+
 // definitions from <wiring_private.h>
 #ifndef cbi
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
@@ -46,33 +50,48 @@
 bool usePairedPin = false;
 
 void setUsePairedPin(bool aUsePairedPin) {
-    usePairedPin = aUsePairedPin;
+	usePairedPin = aUsePairedPin;
 }
 
 bool USART_isBluetoothPaired(void) {
-    if (!usePairedPin) {
-        return true;
-    }
-    // use tVal to produce optimal code with the compiler
-    uint8_t tVal = digitalReadFast(PAIRED_PIN);
-    if (tVal != 0) {
-        return true;
-    }
-    return false;
+	if (!usePairedPin) {
+		return true;
+	}
+	// use tVal to produce optimal code with the compiler
+	uint8_t tVal = digitalReadFast(PAIRED_PIN);
+	if (tVal != 0) {
+		return true;
+	}
+	return false;
 }
+#endif // defined(LOCAL_DISPLAY_EXISTS) && defined(REMOTE_DISPLAY_SUPPORTED)
+
+#if ! defined(USE_SIMPLE_SERIAL) && defined(USE_SERIAL1)
+#define Serial Serial1
 #endif
 
+/*
+ * Wrapper for calling initSimpleSerial or Serial[0,1].begin
+ */
+void initSerial(uint32_t aBaudRate) {
 #ifdef USE_SIMPLE_SERIAL
-#ifdef LOCAL_DISPLAY_EXISTS
-void initSimpleSerial(uint32_t aBaudRate, bool aUsePairedPin) {
-    if (aUsePairedPin) {
-        pinMode(PAIRED_PIN, INPUT);
-    }
+    initSimpleSerial(aBaudRate);
 #else
-void initSimpleSerial(uint32_t aBaudRate) {
+    Serial.begin(aBaudRate);
 #endif
+}
+
+#ifdef USE_SIMPLE_SERIAL
+#  ifdef LOCAL_DISPLAY_EXISTS
+void initSimpleSerial(uint32_t aBaudRate, bool aUsePairedPin) {
+	if (aUsePairedPin) {
+		pinMode(PAIRED_PIN, INPUT);
+	}
+#  else
+void initSimpleSerial(uint32_t aBaudRate) {
+#  endif // LOCAL_DISPLAY_EXISTS
     uint16_t baud_setting;
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
+#  if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
     // Use TX1 on MEGA and on Leonardo, which has no TX0
     UCSR1A = 1 << U2X1;// Double Speed Mode
     // Exact value = 17,3611 (- 1) for 115200  2,1%
@@ -87,13 +106,13 @@ void initSimpleSerial(uint32_t aBaudRate) {
 
     // enable: TX, RX, RX Complete Interrupt
     UCSR1B = (1 << RXEN1) | (1 << TXEN1) | (1 << RXCIE1);
-#else
+#  else
     UCSR0A = 1 << U2X0; // Double Speed Mode
     // Exact value = 17,3611 (- 1) for 115200  2,1%
     // 8,68 (- 1) for 230400 8,5% for 8, 3.7% for 9
     // 4,34 (- 1) for 460800 8,5%
     // HC-05 Specified Max Total Error (%) for 8 bit= +3.90/-4.00
-    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;    // /2 after -1 because of better rounding
+    baud_setting = (((F_CPU / 4) / aBaudRate) - 1) / 2;		// /2 after -1 because of better rounding
 
     // assign the baud_setting, a.k.a. ubbr (USART Baud Rate Register)
     UBRR0H = baud_setting >> 8;
@@ -101,7 +120,7 @@ void initSimpleSerial(uint32_t aBaudRate) {
 
     // enable: TX, RX, RX Complete Interrupt
     UCSR0B = (1 << RXEN0) | (1 << TXEN0) | (1 << RXCIE0);
-#endif
+#  endif // defined(__AVR_ATmega1280__) || ...
     remoteEvent.EventType = EVENT_NO_EVENT;
     remoteTouchDownEvent.EventType = EVENT_NO_EVENT;
 }
@@ -111,18 +130,18 @@ void initSimpleSerial(uint32_t aBaudRate) {
  */
 void sendUSART(char aChar) {
     // wait for buffer to become empty
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
+#  if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
     // Use TX1 on MEGA and on Leonardo, which has no TX0
-        while (!((UCSR1A) & (1 << UDRE1))) {
-            ;
-        }
-        UDR1 = aChar;
-#else
+    while (!((UCSR1A) & (1 << UDRE1))) {
+        ;
+    }
+    UDR1 = aChar;
+#  else
     while (!((UCSR0A) & (1 << UDRE0))) {
         ;
     }
     UDR0 = aChar;
-#endif // Atmega...
+#  endif // Atmega...
 }
 
 //void USART_send(char aChar) {
@@ -130,7 +149,7 @@ void sendUSART(char aChar) {
 //}
 
 void sendUSART(const char * aString) {
-    while(*aString != '0') {
+    while (*aString != '0') {
         sendUSART(*aString);
         aString++;
     }
@@ -160,42 +179,42 @@ void sendUSARTBufferNoSizeCheck(uint8_t * aParameterBufferPointer, int aParamete
 #ifdef USE_SIMPLE_SERIAL
     while (aParameterBufferLength > 0) {
         // wait for USART send buffer to become empty
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
-        // Use TX1 on MEGA and on Leonardo, which has no TX0
+#  if (defined(UCSR1A) && ! defined(USE_USB_SERIAL)) || ! defined (UCSR0A) // Use TX1 on MEGA and on Leonardo, which has no TX0
         while (!((UCSR1A) & (1 << UDRE1))) {
             ;
         }
         UDR1 = *aParameterBufferPointer;
-#else
+#  else
         while (!((UCSR0A) & (1 << UDRE0))) {
             ;
         }
         UDR0 = *aParameterBufferPointer;
-#endif
+#  endif // defined(UCSR1A)
+
         aParameterBufferPointer++;
         aParameterBufferLength--;
     }
     while (aDataBufferLength > 0) {
         // wait for USART send buffer to become empty
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega16U4__) || defined(__AVR_ATmega32U4__)
-        // Use TX1 on MEGA and on Leonardo, which has no TX0
+#  if (defined(UCSR1A) && ! defined(USE_USB_SERIAL)) || ! defined (UCSR0A) // Use TX1 on MEGA and on Leonardo, which has no TX0
         while (!((UCSR1A) & (1 << UDRE1))) {
             ;
         }
         UDR1 = *aDataBufferPointer;
-#else
+#  else
         while (!((UCSR0A) & (1 << UDRE0))) {
             ;
         }
         UDR0 = *aDataBufferPointer;
-#endif
+#  endif // defined(UCSR1A)
+
         aDataBufferPointer++;
         aDataBufferLength--;
     }
-#else
-    Serial.write(aParameterBufferPointer, aParameterBufferLength);
-    Serial.write(aDataBufferPointer, aDataBufferLength);
-#endif
+#else // USE_SIMPLE_SERIAL
+	Serial.write(aParameterBufferPointer, aParameterBufferLength);
+	Serial.write(aDataBufferPointer, aDataBufferLength);
+#endif // USE_SIMPLE_SERIAL
 }
 
 /**
@@ -308,14 +327,14 @@ static uint8_t sReceivedDataSize;
 #ifdef USE_SIMPLE_SERIAL
 bool allowTouchInterrupts = false; // !!do not enable it, if event handling may take more time than receiving a byte (which results in buffer overflow)!!!
 
-#if defined(USART1_RX_vect)
+#  if defined(USART1_RX_vect)
 // Use TX1 on MEGA and on Leonardo, which has no TX0
 ISR(USART1_RX_vect) {
     uint8_t tByte = UDR1;
-#else
+#  else
     ISR(USART_RX_vect) {
         uint8_t tByte = UDR0;
-#endif
+#  endif
         if (sReceiveBufferOutOfSync) {
             // just wait for next sync token and reset buffer
             if (tByte == SYNC_TOKEN) {
@@ -348,12 +367,12 @@ ISR(USART1_RX_vect) {
                         // we have one dedicated touch down event in order not to overwrite it with other events before processing it
                         // Yes it makes no sense if interrupts are allowed!
                         struct BluetoothEvent * tRemoteTouchEventPtr = &remoteEvent;
-#ifndef DO_NOT_NEED_BASIC_TOUCH
+#  ifndef DO_NOT_NEED_BASIC_TOUCH
                         if (sReceivedEventType == EVENT_TOUCH_ACTION_DOWN
                                 || (remoteTouchDownEvent.EventType == EVENT_NO_EVENT && remoteEvent.EventType == EVENT_NO_EVENT)) {
                             tRemoteTouchEventPtr = &remoteTouchDownEvent;
                         }
-#endif
+#  endif
                         tRemoteTouchEventPtr->EventType = sReceivedEventType;
                         // copy buffer to structure
                         memcpy(tRemoteTouchEventPtr->EventData.ByteArray, sReceiveBuffer, sReceivedDataSize);
@@ -376,62 +395,62 @@ ISR(USART1_RX_vect) {
             }
         }
     }
-#else // USE_SIMPLE_SERIAL line 294
+#else // USE_SIMPLE_SERIAL
 
 /*
  * Will be called after each loop() (by Arduino Serial...) to process input data if available.
  */
 void serialEvent(void) {
-    if (sReceiveBufferOutOfSync) {
+	if (sReceiveBufferOutOfSync) {
 // just wait for next sync token
-        while (Serial.available() > 0) {
-            if (Serial.read() == SYNC_TOKEN) {
-                sReceiveBufferOutOfSync = false;
-                sReceivedEventType = EVENT_NO_EVENT;
-                break;
-            }
-        }
-    }
-    if (!sReceiveBufferOutOfSync) {
-        /*
-         * regular operation here
-         */
-        uint8_t tBytesAvailable = Serial.available();
-        /*
-         * enough bytes available for next step?
-         */
-        if (sReceivedEventType == EVENT_NO_EVENT) {
-            if (tBytesAvailable >= 2) {
-                /*
-                 * read message length and event tag first
-                 */
-                Serial.readBytes((char *) sReceiveBuffer, 2);
-                // First byte is raw length so subtract 3 for sync+eventType+length bytes
-                sReceivedDataSize = sReceiveBuffer[0] - 3;
-                if (sReceivedDataSize > RECEIVE_MAX_DATA_SIZE) {
-                    // invalid length
-                    sReceiveBufferOutOfSync = true;
-                    return;
-                }
-                sReceivedEventType = sReceiveBuffer[1];
-                tBytesAvailable -= 2;
-            }
-        }
-        if (sReceivedEventType != EVENT_NO_EVENT) {
-            if (tBytesAvailable > sReceivedDataSize) {
-                // touch or size event complete received, now read data and sync token
-                Serial.readBytes((char *) sReceiveBuffer, sReceivedDataSize);
-                if (Serial.read() == SYNC_TOKEN) {
-                    remoteEvent.EventType = sReceivedEventType;
-                    // copy buffer to structure
-                    memcpy(remoteEvent.EventData.ByteArray, sReceiveBuffer, sReceivedDataSize);
-                    sReceivedEventType = EVENT_NO_EVENT;
-                    handleEvent(&remoteEvent);
-                } else {
-                    sReceiveBufferOutOfSync = true;
-                }
-            }
-        }
-    }
+		while (Serial.available() > 0) {
+			if (Serial.read() == SYNC_TOKEN) {
+				sReceiveBufferOutOfSync = false;
+				sReceivedEventType = EVENT_NO_EVENT;
+				break;
+			}
+		}
+	}
+	if (!sReceiveBufferOutOfSync) {
+		/*
+		 * regular operation here
+		 */
+		uint8_t tBytesAvailable = Serial.available();
+		/*
+		 * enough bytes available for next step?
+		 */
+		if (sReceivedEventType == EVENT_NO_EVENT) {
+			if (tBytesAvailable >= 2) {
+				/*
+				 * read message length and event tag first
+				 */
+				Serial.readBytes((char *) sReceiveBuffer, 2);
+				// First byte is raw length so subtract 3 for sync+eventType+length bytes
+				sReceivedDataSize = sReceiveBuffer[0] - 3;
+				if (sReceivedDataSize > RECEIVE_MAX_DATA_SIZE) {
+					// invalid length
+					sReceiveBufferOutOfSync = true;
+					return;
+				}
+				sReceivedEventType = sReceiveBuffer[1];
+				tBytesAvailable -= 2;
+			}
+		}
+		if (sReceivedEventType != EVENT_NO_EVENT) {
+			if (tBytesAvailable > sReceivedDataSize) {
+				// touch or size event complete received, now read data and sync token
+				Serial.readBytes((char *) sReceiveBuffer, sReceivedDataSize);
+				if (Serial.read() == SYNC_TOKEN) {
+					remoteEvent.EventType = sReceivedEventType;
+					// copy buffer to structure
+					memcpy(remoteEvent.EventData.ByteArray, sReceiveBuffer, sReceivedDataSize);
+					sReceivedEventType = EVENT_NO_EVENT;
+					handleEvent(&remoteEvent);
+				} else {
+					sReceiveBufferOutOfSync = true;
+				}
+			}
+		}
+	}
 }
-#endif // USE_SIMPLE_SERIAL line 294
+#endif // USE_SIMPLE_SERIAL

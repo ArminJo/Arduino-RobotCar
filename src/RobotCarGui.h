@@ -16,10 +16,12 @@
 
 #define PRINT_VOLTAGE_PERIOD_MILLIS 3000
 
-// Change this if you have programmed the HC-05 module for another baud rate
-#ifndef HC_05_BAUD_RATE
-//#define HC_05_BAUD_RATE BAUD_115200
-#define HC_05_BAUD_RATE BAUD_9600
+/****************************************************************************
+ * Change this if you have reprogrammed the hc05 module for other baud rate
+ ***************************************************************************/
+#ifndef BLUETOOTH_BAUD_RATE
+//#define BLUETOOTH_BAUD_RATE BAUD_115200
+#define BLUETOOTH_BAUD_RATE BAUD_9600
 #endif
 
 #define DISPLAY_WIDTH DISPLAY_DEFAULT_WIDTH // 320
@@ -39,7 +41,7 @@
 #define PAGE_SHOW_PATH 2
 #define PAGE_TEST 3
 #define PAGE_LAST_NUMBER PAGE_TEST
-extern uint8_t sActualPage;
+extern uint8_t sCurrentPage;
 
 #define MODE_CONTINUOUS 0
 #define MODE_STEP_TO_NEXT_TURN 1 // stop before a turn
@@ -74,6 +76,8 @@ void drawTestPage(void);
 void startTestPage(void);
 void loopTestPage(void);
 void stopTestPage(void);
+extern BDSlider SliderUSPosition;
+extern BDSlider SliderUSDistance;
 
 // from HomePage
 extern BDButton TouchButtonMelody;
@@ -87,12 +91,13 @@ void stopHomePage(void);
 /*
  * Page management
  */
-extern uint8_t sActualPage;
+extern uint8_t sCurrentPage;
 extern BDButton TouchButtonNextPage;
 extern BDButton TouchButtonReset;
 extern BDButton TouchButtonBack;
 extern BDButton TouchButtonBackSmall;
 void GUISwitchPages(BDButton * aTheTouchedButton, int16_t aValue);
+void startCurrentPage();
 
 /*
  * Common GUI elements
@@ -148,10 +153,9 @@ void clearPrintedForwardDistancesInfos();
 void drawForwardDistancesInfos();
 void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClear);
 
-extern bool sStarted;
+extern bool sRobotCarStarted;
 extern bool sRunAutonomousDrive;
 
-extern unsigned int sLastCentimeterToObstacle;
 extern const int sGetDistancePeriod;
 
 #endif /* SRC_ROBOTCARGUI_H_ */

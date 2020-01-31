@@ -48,125 +48,14 @@ void playRandomMelody();
 #endif
 
 void initLaserServos();
+void doAutonomousDrive();
 
-void setup() {
-// initialize digital pins as an output.
-    pinMode(TRIGGER_OUT_PIN, OUTPUT);
-    pinMode(LASER_OUT_PIN, OUTPUT);
-    initUSDistancePins(TRIGGER_OUT_PIN, ECHO_IN_PIN);
-
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    pinMode(CAMERA_SUPPLY_CONTROL_PIN, OUTPUT);
-#endif
-
-    /*
-     * For slot type optocoupler interrupts on pin PD2 + PD3
-     */
-    EncoderMotor::enableBothInterruptsOnBothEdges();
-    EncoderMotor::EnableValuesPrint = true;
-
-    initLaserServos();
-    initUSServo();
-
-// initialize motors
-    RobotCar.init(TWO_WD_DETECTION_PIN);
-
-// reset all values
-    resetPathData();
-
-    setupGUI();
-
-    // Just to know which program is running on my Arduino
-    BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
-
-    readVINVoltage();
-    randomSeed(sVINVoltage * 10000);
-}
-
-void loop() {
-    checkForLowVoltage();
-
-    // check if just timeout, no Bluetooth connection and connected to LIPO battery
-    if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < 11000) && (millis() > 10000)
-            && (sVINVoltage > VOLTAGE_USB_THRESHOLD)) {
-        /*
-         * Timeout just reached, play melody and start autonomous drive
-         */
-#ifdef ENABLE_RTTTL
-        playRandomMelody();
-        delayAndLoopGUI(1000);
-#else
-        delayAndLoopGUI(6000);
-#endif
-        startStopAutomomousDrive(true, true);
-    }
-
-    /*
-     * check for user input and update display output
-     */
-    loopGUI();
-
-#ifdef ENABLE_RTTTL
-    /*
-     * check for playing melody
-     */
-    if (sPlayMelody) {
-        RobotCar.resetAndShutdownMotors();
-        playRandomMelody();
-    }
-
-#endif
-
-    if (sStarted && (sActualPage == PAGE_HOME || sActualPage == PAGE_TEST)) {
-        /*
-         * Direct speed control by GUI
-         */
-        RobotCar.updateMotors();
-        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
-    }
-
-    if (sRunAutonomousDrive) {
-        /*
-         * Start autonomous driving
-         */
-        bool (*tfillForwardDistancesInfoFunction)(bool, bool);
-        int (*tCollisionDetectionFunction)();
-        tfillForwardDistancesInfoFunction = &fillForwardDistancesInfo;
-        if (sUseBuiltInAutonomousDriveStrategy) {
-            tCollisionDetectionFunction = &doBuiltInCollisionDetection;
-        } else {
-            tCollisionDetectionFunction = &doUserCollisionDetection;
-        }
-        EncoderMotor::EnableValuesPrint = false;
-
-        /*
-         * Autonomous driving main loop
-         */
-        while (sRunAutonomousDrive) {
-            driveAutonomousOneStep(tfillForwardDistancesInfoFunction, tCollisionDetectionFunction);
-            /*
-             * check for user input and update display output
-             */
-            loopGUI();
-        }
-
-        /*
-         * Stop autonomous driving. RobotCar.isStopped() is true here
-         */
-        if (sStepMode != MODE_SINGLE_STEP) {
-            // add last driven distance to path
-            insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
-        }
-
-        EncoderMotor::EnableValuesPrint = true;
-        US_ServoWriteAndDelay(90);
-    }
-}
-
-/*
+/*************************************************************************************
+ * Extend this basic collision detection to test your own skill in autonomous driving
+ *
  * Checks distances and returns degree to turn
- * 0 -> no turn, >0 -> turn left, <0 -> turn right
- */
+ * @return 0 -> no turn, >0 -> turn left, <0 -> turn right
+ *************************************************************************************/
 int doUserCollisionDetection() {
 // if left three distances are all less than 21 centimeter then turn right.
     if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
@@ -195,6 +84,143 @@ int doUserCollisionDetection() {
     }
 }
 
+/*
+ * Start of robot car control program
+ */
+void setup() {
+// initialize digital pins as an output.
+    pinMode(TRIGGER_OUT_PIN, OUTPUT);
+    initUSDistancePins(TRIGGER_OUT_PIN, ECHO_IN_PIN);
+
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    pinMode(CAMERA_SUPPLY_CONTROL_PIN, OUTPUT);
+#endif
+
+    /*
+     * For slot type optocoupler interrupts on pin PD2 + PD3
+     */
+    EncoderMotor::enableBothInterruptsOnBothEdges();
+    EncoderMotor::EnableValuesPrint = true;
+
+#ifdef HAS_LASER
+    pinMode(LASER_OUT_PIN, OUTPUT);
+    initLaserServos();
+#endif
+    initUSServo();
+
+// initialize motors
+    RobotCar.init(TWO_WD_DETECTION_PIN);
+
+// reset all values
+    resetPathData();
+
+    setupGUI();
+
+    // Just to know which program is running on my Arduino
+    BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
+
+    readVINVoltage();
+    randomSeed(sVINVoltage * 10000);
+}
+
+void loop() {
+    checkForLowVoltage();
+
+    /*
+     * check if timeout, no Bluetooth connection and connected to LIPO battery
+     */
+    if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < 11000) && (millis() > 10000)
+            && (sVINVoltage > VOLTAGE_USB_THRESHOLD)) {
+        /*
+         * Timeout just reached, play melody and start autonomous drive
+         */
+#ifdef ENABLE_RTTTL
+        playRandomMelody();
+        delayAndLoopGUI(1000);
+#else
+        delayAndLoopGUI(6000); // delay needed for millis() check above!
+#endif
+        startStopAutomomousDrive(true, true);
+    }
+
+    /*
+     * check for user input and update display output
+     */
+    loopGUI();
+
+    /*
+     * After 2 minutes of user inactivity, make noise by scanning with US Servo and repeat it every minute
+     */
+#if VERSION_BLUE_DISPLAY_NUMERICAL >= 121
+    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + 120000L < millis()) {
+        sMillisOfLastReceivedBDEvent = millis() - 60000; // adjust sMillisOfLastReceivedBDEvent to have the next scan in 1 minute
+        fillAndShowForwardDistancesInfo((sCurrentPage == PAGE_AUTOMATIC_CONTROL), true);
+    }
+#endif
+
+#ifdef ENABLE_RTTTL
+    /*
+     * check for playing melody
+     */
+    if (sPlayMelody) {
+        RobotCar.resetAndShutdownMotors();
+        playRandomMelody();
+    }
+
+#endif
+
+    if (sRobotCarStarted && (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST)) {
+        /*
+         * Direct speed control by GUI
+         */
+        RobotCar.updateMotors();
+        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+    }
+
+    if (sRunAutonomousDrive) {
+        /*
+         * Start autonomous driving
+         */
+        doAutonomousDrive();
+    }
+}
+
+/*
+ * Start, loop and stop of autonomous driving
+ */
+void doAutonomousDrive() {
+    /*
+     * Start autonomous driving
+     */
+    int (*tCollisionDetectionFunction)();
+
+    if (sUseBuiltInAutonomousDriveStrategy) {
+        tCollisionDetectionFunction = &doBuiltInCollisionDetection;
+    } else {
+        tCollisionDetectionFunction = &doUserCollisionDetection;
+    }
+    EncoderMotor::EnableValuesPrint = false;
+    /*
+     * Autonomous driving main loop
+     */
+    while (sRunAutonomousDrive) {
+        driveAutonomousOneStep(tCollisionDetectionFunction);
+        /*
+         * check for user input and update display output
+         */
+        loopGUI();
+    }
+    /*
+     * Stop autonomous driving. RobotCar.isStopped() is true here
+     */
+    if (sStepMode != MODE_SINGLE_STEP) {
+        // add last driven distance to path
+        insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
+    }
+    EncoderMotor::EnableValuesPrint = true;
+    US_ServoWriteAndDelay(90);
+}
+
 void readVINVoltage() {
     float tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
 // assume resistor network of 100k / 10k (divider by 11)
@@ -219,7 +245,7 @@ void checkForLowVoltage() {
             readAndPrintVinPeriodically();
             delay(PRINT_VOLTAGE_PERIOD_MILLIS);
         }
-        // refresh actual page
+        // refresh current page
         GUISwitchPages(NULL, 0);
     }
 }
@@ -251,7 +277,7 @@ void playRandomMelody() {
             break;
         }
     }
-    TouchButtonMelody.setValue(false, (sActualPage == PAGE_HOME));
+    TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
     digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor
     bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
     sPlayMelody = false;

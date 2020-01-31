@@ -46,7 +46,7 @@ void setStepMode(uint8_t aStepMode) {
     }
     sStepMode = aStepMode;
     setStepModeButtonCaption();
-    if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
+    if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         TouchButtonStepMode.drawButton();
     }
 }
@@ -68,34 +68,37 @@ void doStep(BDButton * aTheTouchedButton, int16_t aValue) {
     /*
      * Start if not yet done
      */
-    if (!sStarted) {
+    if (!sRobotCarStarted) {
         startStopAutomomousDrive(true, sUseBuiltInAutonomousDriveStrategy);
     }
 }
 
 void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
-    bool tInfoWasProcessed;
     clearPrintedForwardDistancesInfos();
-    tInfoWasProcessed = fillForwardDistancesInfo(true, true);
+    fillAndShowForwardDistancesInfo(true, true);
     doWallDetection(true);
     sNextDegreesToTurn = doBuiltInCollisionDetection();
     drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE, false);
-    if (!tInfoWasProcessed) {
-        drawForwardDistancesInfos();
-    }
 }
 
 void startStopAutomomousDrive(bool aDoStart, bool aDoInternalAutonomousDrive) {
     sRunAutonomousDrive = aDoStart;
     sUseBuiltInAutonomousDriveStrategy = aDoInternalAutonomousDrive;
     /*
+     * Switch to right page. Needed for call from timeout condition.
+     */
+    if (sCurrentPage != PAGE_AUTOMATIC_CONTROL) {
+        GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL - sCurrentPage);
+    }
+    /*
      *  manage buttons
      */
-    TouchButtonBuiltInAutonomousDrive.setValue(aDoStart, (sActualPage == PAGE_AUTOMATIC_CONTROL));
+    TouchButtonBuiltInAutonomousDrive.setValue(aDoStart, (sCurrentPage == PAGE_AUTOMATIC_CONTROL));
 
     bool tInternalAutonomousDrive = aDoStart;
     bool tExternalAutonomousDrive = aDoStart;
     if (aDoStart) {
+        sCurrentPage = PAGE_AUTOMATIC_CONTROL;
         // decide which button to disable if started
         if (aDoInternalAutonomousDrive) {
             tExternalAutonomousDrive = false;
@@ -109,8 +112,8 @@ void startStopAutomomousDrive(bool aDoStart, bool aDoInternalAutonomousDrive) {
         sDoStep = true;
         resetPathData();
     }
-    TouchButtonBuiltInAutonomousDrive.setValue(tInternalAutonomousDrive, (sActualPage == PAGE_AUTOMATIC_CONTROL));
-    TouchButtonTestUser.setValue(tExternalAutonomousDrive, (sActualPage == PAGE_AUTOMATIC_CONTROL));
+    TouchButtonBuiltInAutonomousDrive.setValueAndDraw(tInternalAutonomousDrive);
+    TouchButtonTestUser.setValueAndDraw(tExternalAutonomousDrive);
 
     startStopRobotCar(aDoStart);
 }
@@ -172,9 +175,6 @@ void drawAutonomousDrivePage(void) {
     TouchButtonBuiltInAutonomousDrive.drawButton();
     TouchButtonTestUser.drawButton();
     TouchButtonNextPage.drawButton();
-
-    drawForwardDistancesInfos();
-    drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE, false);
 }
 
 void startAutonomousDrivePage(void) {
@@ -189,11 +189,11 @@ void startAutonomousDrivePage(void) {
 }
 
 void loopAutonomousDrivePage(void) {
-
+// nothing to do exclusively for this page
 }
 
 void stopAutonomousDrivePage(void) {
-
+// no action needed
 }
 
 /*
@@ -224,7 +224,7 @@ void drawForwardDistancesInfos() {
             tDistance = US_TIMEOUT_CENTIMETER;
             tColor = COLOR_GREEN;
         }
-        if (tDistance > sCountPerScan) {
+        if (tDistance > sCentimeterPerScanTimesTwo) {
             tColor = COLOR_GREEN;
         } else if (tDistance < sCentimeterPerScan) {
             tColor = COLOR_RED;
@@ -240,7 +240,7 @@ void drawForwardDistancesInfos() {
 }
 
 void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClear) {
-    if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
+    if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         color16_t tColor = COLOR_YELLOW;
         int tDegreeToDisplay = aDegreeToTurn;
         if (tDegreeToDisplay == 180) {
@@ -253,8 +253,8 @@ void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoC
         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
                 tColor);
         if (!aDoClear) {
-            sprintf_P(sStringBuffer, PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sForwardDistancesInfo.WallLeftAngleDegree,
-                    aDegreeToTurn, sForwardDistancesInfo.WallRightAngleDegree);
+            sprintf_P(sStringBuffer, PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sForwardDistancesInfo.WallLeftAngleDegrees,
+                    aDegreeToTurn, sForwardDistancesInfo.WallRightAngleDegrees); // \xB0 is degree character
             BlueDisplay1.drawText(US_DISTANCE_MAP_ORIGIN_X - US_DISTANCE_MAP_WIDTH_HALF, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11,
                     sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
         }

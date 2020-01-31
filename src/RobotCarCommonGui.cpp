@@ -21,13 +21,13 @@
 #include "RobotCarGui.h"
 #include "RobotCar.h"
 
-uint8_t sActualPage;
+uint8_t sCurrentPage;
 BDButton TouchButtonBackSmall;
 BDButton TouchButtonBack;
 BDButton TouchButtonNextPage;
 BDButton TouchButtonCalibrate;
 
-bool sStarted; // main start flag. If true motors are running
+bool sRobotCarStarted; // main start flag. If true motors are running
 BDButton TouchButtonRobotCarStartStop;
 BDButton TouchButtonDirection;
 
@@ -41,17 +41,13 @@ BDSlider SliderSpeedLeft;
 char sStringBuffer[128];
 
 void setupGUI(void) {
-#ifdef USE_SIMPLE_SERIAL  // Comment line 39 in BlueSerial.h or use global #define USE_STANDARD_SERIAL to disable it
-    initSimpleSerial(HC_05_BAUD_RATE);
-#else
-    Serial.begin(HC_05_BAUD_RATE);
-#endif
+    initSerial(BLUETOOTH_BAUD_RATE);
 
-    sActualPage = PAGE_HOME;
+    sCurrentPage = PAGE_HOME;
 
     // Register callback handler and check for connection
-    // This leads to call to initDisplay() and drawHomePage() after connect
-    BlueDisplay1.initCommunication(&initDisplay, &startHomePage);
+    // This leads to call to initDisplay() and startCurrentPage() after connect
+    BlueDisplay1.initCommunication(&initDisplay, &startCurrentPage);
 }
 
 void delayAndLoopGUI(uint16_t aDelayMillis) {
@@ -70,18 +66,18 @@ void loopGUI(void) {
          * Display changed values in GUI only at manual page
          */
 
-        if (sActualPage == PAGE_HOME) {
+        if (sCurrentPage == PAGE_HOME) {
             loopHomePage();
-        } else if (sActualPage == PAGE_TEST) {
+        } else if (sCurrentPage == PAGE_TEST) {
             loopTestPage();
-        } else if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
+        } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
             loopAutonomousDrivePage();
-        } else if (sActualPage == PAGE_SHOW_PATH) {
+        } else if (sCurrentPage == PAGE_SHOW_PATH) {
             loopPathInfoPage();
         }
 
         // for all but PathInfo page
-        if (sActualPage != PAGE_SHOW_PATH) {
+        if (sCurrentPage != PAGE_SHOW_PATH) {
             /*
              * Print changed tick values
              */
@@ -102,30 +98,41 @@ void loopGUI(void) {
 }
 
 void setStartStopButtonValue() {
-    TouchButtonRobotCarStartStop.setValueAndDraw(sStarted);
+    TouchButtonRobotCarStartStop.setValueAndDraw(sRobotCarStarted);
+}
+
+/*
+ * Updates and shows speed slider value according to ActualSpeed
+ */
+void showSpeedSliderValue() {
+    if (rightEncoderMotor.ActualSpeed != sLastSpeedSliderValue) {
+        SliderSpeed.setActualValueAndDrawBar(rightEncoderMotor.ActualSpeed);
+        sLastSpeedSliderValue = rightEncoderMotor.ActualSpeed;
+    }
 }
 
 /*
  * Handle Start/Stop
  */
 void startStopRobotCar(bool aNewStartedValue) {
-    sStarted = aNewStartedValue;
-    TouchButtonRobotCarStartStop.setValue(aNewStartedValue, (sActualPage == PAGE_HOME));
+    sRobotCarStarted = aNewStartedValue;
+    TouchButtonRobotCarStartStop.setValue(aNewStartedValue, (sCurrentPage == PAGE_HOME));
 
-    if (sStarted) {
+    if (sRobotCarStarted) {
         // enable motors
         RobotCar.activateMotors();
     } else {
         // stop, but preserve direction
         RobotCar.shutdownMotors(false);
-        if (sActualPage == PAGE_HOME|| sActualPage == PAGE_TEST) {
-            SliderSpeed.setActualValueAndDrawBar(0);
-        }
+    }
+
+    if (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST) {
+        showSpeedSliderValue();
     }
 }
 
 void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aValue) {
-    startStopRobotCar(!sStarted);
+    startStopRobotCar(!sRobotCarStarted);
 }
 
 void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -138,27 +145,11 @@ void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue) {
  */
 void doSpeedSlider(BDSlider * aTheTouchedSlider, uint16_t aValue) {
     if (aValue != sLastSpeedSliderValue) {
-        if (!sStarted) {
+        if (!sRobotCarStarted) {
             startStopRobotCar(true);
         }
         sLastSpeedSliderValue = aValue;
         RobotCar.setSpeedCompensated(aValue);
-    }
-}
-
-/*
- * Updates and shows speed slider value according to ActualSpeed
- */
-void showSpeedSliderValue() {
-    uint8_t tActualRequestedSpeed;
-    if (rightEncoderMotor.SpeedCompensation == 0) {
-        tActualRequestedSpeed = rightEncoderMotor.ActualSpeed;
-    } else {
-        tActualRequestedSpeed = leftEncoderMotor.ActualSpeed;
-    }
-    if (tActualRequestedSpeed != sLastSpeedSliderValue) {
-        SliderSpeed.setActualValueAndDrawBar(tActualRequestedSpeed);
-        sLastSpeedSliderValue = tActualRequestedSpeed;
     }
 }
 
@@ -185,7 +176,6 @@ void doChangeDirection(BDButton * aTheTouchedButton, int16_t aValue) {
     RobotCar.setDirection(!RobotCar.isDirectionForward);
     setDirectionButtonCaption();
     TouchButtonDirection.drawButton();
-    startStopRobotCar(false);
 }
 
 void setDirectionButtonCaption() {
@@ -198,48 +188,63 @@ void setDirectionButtonCaption() {
     }
 }
 
+void startCurrentPage() {
+    switch (sCurrentPage) {
+    case PAGE_HOME:
+        startHomePage();
+        break;
+    case PAGE_AUTOMATIC_CONTROL:
+        startAutonomousDrivePage();
+        break;
+    case PAGE_SHOW_PATH:
+        startPathInfoPage();
+        break;
+    case PAGE_TEST:
+        startTestPage();
+        break;
+    }
+}
 /*
  * For Next and Back button
  * Stop old page and start new one
+ * @param aValue then difference between the current and the new page number. sCurrentPage += aValue;
  */
 void GUISwitchPages(BDButton * aTheTouchedButton, int16_t aValue) {
+
     /*
      * Stop old page
      */
-    if (sActualPage == PAGE_HOME) {
+    switch (sCurrentPage) {
+    case PAGE_HOME:
         stopHomePage();
-    } else if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
+        break;
+    case PAGE_AUTOMATIC_CONTROL:
         stopAutonomousDrivePage();
-    } else if (sActualPage == PAGE_SHOW_PATH) {
+        break;
+    case PAGE_SHOW_PATH:
         stopPathInfoPage();
-    } else if (sActualPage == PAGE_TEST) {
+        break;
+    case PAGE_TEST:
         stopTestPage();
         aValue = -3; // only back to home permitted
+        break;
     }
 
     /*
      * determine next page
      */
-    sActualPage += aValue;
+    sCurrentPage += aValue;
     // handle overflow and unsigned underflow
-    if (sActualPage > PAGE_LAST_NUMBER) {
-        sActualPage = PAGE_HOME;
+    if (sCurrentPage > PAGE_LAST_NUMBER) {
+        sCurrentPage = PAGE_HOME;
     }
 
-//    BlueDisplay1.debug("Actual page=", sActualPage);
+//    BlueDisplay1.debug("Actual page=", sCurrentPage);
 
     /*
      * Start new page
      */
-    if (sActualPage == PAGE_HOME) {
-        startHomePage();
-    } else if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
-        startAutonomousDrivePage();
-    } else if (sActualPage == PAGE_SHOW_PATH) {
-        startPathInfoPage();
-    } else if (sActualPage == PAGE_TEST) {
-        startTestPage();
-    }
+    startCurrentPage();
 }
 
 void initDisplay(void) {
@@ -254,11 +259,11 @@ void initDisplay(void) {
      * Common control buttons
      */
     TouchButtonRobotCarStartStop.init(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_BLUE, F("Start"),
-    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sStarted, &doRobotCarStartStop);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sRobotCarStarted, &doRobotCarStartStop);
     TouchButtonRobotCarStartStop.setCaptionForValueTrue(F("Stop"));
 
     TouchButtonNextPage.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, "",
-            TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 1, &GUISwitchPages);
+    TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 1, &GUISwitchPages);
 
     TouchButtonBack.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, F("Back"),
     TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -1, &GUISwitchPages);
@@ -271,7 +276,7 @@ void initDisplay(void) {
 
     // Direction
     TouchButtonDirection.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, "",
-    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doChangeDirection);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, RobotCar.isDirectionForward, &doChangeDirection);
     setDirectionButtonCaption();
 
     /*
@@ -302,7 +307,6 @@ void drawCommonGui(void) {
 
     BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT, F("Robot Car"), TEXT_SIZE_22, COLOR_BLUE,
     COLOR_NO_BACKGROUND);
-
 }
 
 /*
@@ -320,7 +324,7 @@ void readAndPrintVinPeriodically() {
         readVINVoltage();
         dtostrf(sVINVoltage, 4, 2, tVCCString);
         sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
-        if (sActualPage == PAGE_HOME) {
+        if (sCurrentPage == PAGE_HOME) {
             BlueDisplay1.drawText(BUTTON_WIDTH_8_POS_4,
             BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11_DECEND, tDataBuffer,
             TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
@@ -351,11 +355,12 @@ void printMotorValues() {
 
 void printDistanceValues() {
     uint16_t tYPos;
-    if (sActualPage == PAGE_AUTOMATIC_CONTROL) {
+    if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         tYPos = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
     } else {
         tYPos = SPEED_SLIDER_SIZE / 2 + 25;
     }
-    sprintf_P(sStringBuffer, PSTR("%4d %4d%3d"), leftEncoderMotor.DistanceCount, rightEncoderMotor.DistanceCount, sCountPerScan);
+    sprintf_P(sStringBuffer, PSTR("%4d %4d%3d"), leftEncoderMotor.DistanceCount, rightEncoderMotor.DistanceCount,
+            sCentimeterPerScanTimesTwo);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
 }

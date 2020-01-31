@@ -54,7 +54,7 @@ EncoderMotor::EncoderMotor() : // @suppress("Class members should be properly in
         while (tObjectPointer->NextMotorControl != NULL) {
             tObjectPointer = tObjectPointer->NextMotorControl;
         }
-        //insert actual control in last element
+        //insert current control in last element
         tObjectPointer->NextMotorControl = this;
     }
 }
@@ -385,7 +385,8 @@ void EncoderMotor::shutdownMotor(bool doBrake) {
 }
 
 /*
- * Resets all control values to 0x00
+ * Stop car and reset all control values as speed, distances, debug values to 0x00
+ * Leave calibration and compensation values unaffected.
  */
 void EncoderMotor::resetAndShutdown() {
     shutdownMotor(false);

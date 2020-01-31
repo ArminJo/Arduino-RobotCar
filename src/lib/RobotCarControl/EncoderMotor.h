@@ -42,7 +42,7 @@
 // Ticks for ramp down if external stop requested
 #define RAMP_DOWN_MIN_TICKS 3
 
-// Safety net. If difference between targetCount and actual distanceCount is less than, adjust new targetCount
+// Safety net. If difference between targetCount and current distanceCount is less than, adjust new targetCount
 #define MAX_DISTANCE_DELTA 8
 
 #define MOTOR_STATE_STOPPED 0
@@ -154,18 +154,18 @@ public:
     uint8_t EncoderMotorNumber;
 
     /*
-     * Minimum speed setting at which motor starts moving. Depend on actual voltage, load and surface.
+     * Minimum speed setting at which motor starts moving. Depend on current voltage, load and surface.
      * Is computed by calibrate() and then stored (with the other values) in eeprom.
      */
     uint8_t MinSpeed;
     /*
-     * minimum speed to approach target count in order to be able to stop fast - actually set to MinSpeed
+     * minimum speed to approach target count in order to be able to stop fast - currently set to MinSpeed
      */
     uint8_t StopSpeed;
     // maximum speed - TODO 0xFF should be working
     uint8_t MaxSpeed;
     // positive value to be subtracted from TargetSpeed to get ActualSpeed to compensate for different left and right motors
-    // actually SpeedCompensation is in steps of 2 and only one motor can have a positive value, the other has zero.
+    // currently SpeedCompensation is in steps of 2 and only one motor can have a positive value, the other has zero.
     uint8_t SpeedCompensation;
 
     /*

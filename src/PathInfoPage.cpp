@@ -86,7 +86,7 @@ void resetPathData() {
     sLastXPathInt = 0;
     sLastYPathInt = 0;
     sXPathMax = sYPathMax = 0;
-    // Yes actual minimum is zero since it can be negative
+    // Yes current minimum is zero since it can be negative
     sXPathMin = sYPathMin = 0;
 
     sLastPathDirectionDegree = 0;
@@ -101,9 +101,9 @@ void resetPathData() {
 }
 
 /*
- * (Over-)writes to actual pointer position
+ * (Over-)writes to current pointer position
  * 0 degree goes in X direction
- * @param aAddEntry if false only values of actual entry will be adjusted
+ * @param aAddEntry if false only values of current entry will be adjusted
  */
 void insertToPath(int aLength, int aDegree, bool aAddEntry) {
 //    BlueDisplay1.debug("Degree=", aDegree);

@@ -77,11 +77,14 @@ const int LASER_SERVO_PAN_PIN = 10;
 const int LASER_SERVO_TILT_PIN = 11;
 extern Servo LaserPanServo;
 #ifdef USE_PAN_TILT_SERVO
+#define HAS_LASER
 #define TILT_SERVO_MIN_VALUE 7 // since lower values will make an insane sound at my pan tilt device
 extern Servo LaserTiltServo;
 #endif
 
+#ifdef HAS_LASER
 const int LASER_OUT_PIN = 13;
+#endif
 
 extern CarMotorControl RobotCar;
 extern float sVINVoltage;

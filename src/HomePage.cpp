@@ -51,9 +51,11 @@ void doVerticalLaserServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue)
 }
 #endif
 
+#ifdef HAS_LASER
 void doLaserOnOff(BDButton * aTheTouchedButton, int16_t aValue) {
     digitalWrite(LASER_OUT_PIN, aValue);
 }
+#endif
 
 #ifdef USE_TB6612_BREAKOUT_BOARD
 void doCameraSupplyOnOff(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -84,6 +86,7 @@ void initHomePage(void) {
             FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doPlayMelody);
 #endif
 
+#ifdef HAS_LASER
     TouchButtonLaser.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
     BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_BLACK, F("Laser"), TEXT_SIZE_22,
             FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doLaserOnOff);
@@ -93,7 +96,12 @@ void initHomePage(void) {
     SliderLaserPositionHorizontal.setBarThresholdColor(COLOR_BLUE);
     // scale slider values
     SliderLaserPositionHorizontal.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderLaserPositionHorizontal.setValueUnitString("\xB0");
+    SliderLaserPositionHorizontal.setValueUnitString("\xB0"); // \xB0 is degree character
+
+    // initialize and set Laser pan servo
+    LaserPanServo.attach(LASER_SERVO_PAN_PIN);
+    LaserPanServo.write(90);
+#endif
 
 #ifdef USE_PAN_TILT_SERVO
     SliderLaserPositionVertical.init(BUTTON_WIDTH_6_POS_5, 10, BUTTON_WIDTH_6, LASER_SLIDER_SIZE, 90, 0, COLOR_YELLOW,
@@ -101,15 +109,11 @@ void initHomePage(void) {
     SliderLaserPositionHorizontal.setBarThresholdColor(COLOR_BLUE);
     // scale slider values
     SliderLaserPositionHorizontal.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderLaserPositionHorizontal.setValueUnitString("\xB0");
+    SliderLaserPositionHorizontal.setValueUnitString("\xB0"); // \xB0 is degree character
 
     LaserTiltServo.attach(LASER_SERVO_TILT_PIN);
     LaserTiltServo.write(TILT_SERVO_MIN_VALUE);
 #endif
-
-    // initialize and set Laser pan servo
-    LaserPanServo.attach(LASER_SERVO_PAN_PIN);
-    LaserPanServo.write(90);
 }
 
 /*
@@ -118,11 +122,17 @@ void initHomePage(void) {
 void drawHomePage(void) {
     drawCommonGui();
 
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + TEXT_SIZE_22_WIDTH, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Control"),
-    TEXT_SIZE_22, COLOR_BLUE, COLOR_NO_BACKGROUND);
+    char tCarTypeString[] = "4WD";
+    if (RobotCar.is2WDCar) {
+        tCarTypeString[0] = '2';
+    }
+
+    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, tCarTypeString, TEXT_SIZE_22,
+    COLOR_BLUE, COLOR_NO_BACKGROUND);
+    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + (3 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT,
+            F(" Control"), TEXT_SIZE_22, COLOR_BLUE, COLOR_NO_BACKGROUND);
 
     TouchButtonRobotCarStartStop.drawButton();
-    TouchButtonLaser.drawButton();
     TouchButtonMelody.drawButton();
     TouchButtonCameraOnOff.drawButton();
 
@@ -132,9 +142,17 @@ void drawHomePage(void) {
     TouchButtonDirection.drawButton();
     TouchButtonCalibrate.drawButton();
 
+#ifdef HAS_LASER
+    TouchButtonLaser.drawButton();
+
     SliderLaserPositionHorizontal.drawSlider();
-#ifdef USE_PAN_TILT_SERVO
+#  ifdef USE_PAN_TILT_SERVO
     SliderLaserPositionVertical.drawSlider();
+#  endif
+#else
+    SliderUSPosition.setActualValueAndDrawBar(sLastServoAngleInDegrees);
+    SliderUSPosition.drawSlider();
+    SliderUSDistance.drawSlider();
 #endif
     SliderSpeed.drawSlider();
     SliderSpeedRight.drawSlider();
@@ -154,6 +172,10 @@ void startHomePage(void) {
 
 void loopHomePage(void) {
     displayVelocitySliderValues();
+
+#ifndef HAS_LASER
+    checkAndShowDistancePeriodically(sGetDistancePeriod);
+#endif
 
     if (EncoderMotor::ValuesHaveChanged) {
         EncoderMotor::ValuesHaveChanged = false;

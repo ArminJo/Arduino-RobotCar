@@ -63,7 +63,6 @@ BDSlider SliderUSPosition;
 BDSlider SliderUSDistance;
 unsigned int sSliderLastCentimeter;
 
-unsigned int sLastCentimeterToObstacle = 0;
 const int sGetDistancePeriod = 500;
 
 void doDistance(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -109,10 +108,13 @@ void doUSServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
     US_ServoWriteAndDelay(aValue);
 }
 
+/*
+ * stop and reset motors, but do not stop control
+ */
 void doReset(BDButton * aTheTouchedButton, int16_t aValue) {
     RobotCar.resetAndShutdownMotors();
     setDirectionButtonCaption();
-    startStopRobotCar(false);
+    startStopRobotCar(true);
 }
 
 void initTestPage(void) {
@@ -129,7 +131,7 @@ void initTestPage(void) {
             FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
     SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
     SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderUSPosition.setValueUnitString("\xB0");
+    SliderUSPosition.setValueUnitString("\xB0"); // \xB0 is degree character
 
     /*
      * Control buttons
@@ -155,16 +157,16 @@ void initTestPage(void) {
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 40, &doDistance);
 
     TouchButton45DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation);
+            F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation); // \xB0 is degree character
     TouchButton45DegreeRight.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation);
+            F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation); // \xB0 is degree character
 
     TouchButton90DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 90, &doRotation);
+            F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 90, &doRotation); // \xB0 is degree character
     TouchButton90DegreeRight.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation);
+            F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation); // \xB0 is degree character
     TouchButton360Degree.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("360\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 360, &doRotation);
+            F("360\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 360, &doRotation); // \xB0 is degree character
 
     TouchButtonDebug.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED, F("dbg"),
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sShowDebug, &doShowDebug);
@@ -209,7 +211,11 @@ void drawTestPage(void) {
     printDistanceValues();
 }
 
+/*
+ * Stop motors but enable movement
+ */
 void startTestPage(void) {
+    doReset(NULL, 0);
     drawTestPage();
 }
 
@@ -252,10 +258,7 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
             sLastUSMeasurementMillis = tMillis;
             unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(300);
             // feedback as slider length
-            if (tCentimeter != sLastCentimeterToObstacle) {
-                sLastCentimeterToObstacle = tCentimeter;
-                showDistance(tCentimeter);
-            }
+            showDistance(tCentimeter);
         }
     }
 }

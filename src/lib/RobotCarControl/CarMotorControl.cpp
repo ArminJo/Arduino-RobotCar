@@ -45,6 +45,7 @@ void CarMotorControl::init(uint8_t aPinFor2WDDetection) {
     EncoderMotor::enableBothInterruptsOnBothEdges();
 
     is2WDCar = !digitalRead(aPinFor2WDDetection);
+    isDirectionForward = true;
 }
 
 void CarMotorControl::setSpeedCompensated(uint8_t aSpeed) {
@@ -57,6 +58,9 @@ void CarMotorControl::activateMotors() {
     leftEncoderMotor.activate();
 }
 
+/*
+ * Stop car
+ */
 void CarMotorControl::shutdownMotors(bool doBrake) {
     rightEncoderMotor.shutdownMotor(doBrake);
     leftEncoderMotor.shutdownMotor(doBrake);
@@ -67,6 +71,10 @@ void CarMotorControl::updateMotors() {
     leftEncoderMotor.updateMotor();
 }
 
+/*
+ * Stop car and reset all control values as speed, distances, debug values to 0x00
+ * Leave calibration and compensation values unaffected.
+ */
 void CarMotorControl::resetAndShutdownMotors() {
     rightEncoderMotor.resetAndShutdown();
     leftEncoderMotor.resetAndShutdown();

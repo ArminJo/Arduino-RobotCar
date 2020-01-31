@@ -32,22 +32,24 @@
 #include "EventHandler.h"
 #include "BlueDisplay.h"
 
-#ifdef AVR
+#ifdef ARDUINO
 #include <Arduino.h> // for millis()
 #else
 #include "timing.h" // for getMillisSinceBoot()
-#ifdef USE_STM32F3_DISCO
-#include "stm32f3_discovery.h"  // For LEDx
-#endif
+#  ifdef USE_STM32F3_DISCO
+#  include "stm32f3_discovery.h"  // For LEDx
+#  endif
 #include "stm32fx0xPeripherals.h" // For Watchdog_reload()
 #include <stdio.h> // for printf
-#endif
+#endif // ARDUINO
 
 #ifdef LOCAL_DISPLAY_EXISTS
 #include "ADS7846.h"
 #endif
 
 #include <stdlib.h> // for abs()
+
+unsigned long sMillisOfLastReceivedBDEvent;
 
 #ifndef DO_NOT_NEED_BASIC_TOUCH_EVENTS
 struct TouchEvent sDownPosition;
@@ -79,7 +81,7 @@ bool sDisableTouchUpOnce = false;
 bool sDisableUntilTouchUpIsDone = false;
 
 struct BluetoothEvent remoteEvent;
-#ifdef AVR
+#ifdef ARDUINO
 // Serves also as second buffer for regular events to avoid overwriting of touch down events if CPU is busy and interrupt in not enabled
 struct BluetoothEvent remoteTouchDownEvent;
 #endif
@@ -202,20 +204,21 @@ void registerSensorChangeCallback(uint8_t aSensorType, uint8_t aSensorRate, uint
  * AVR - Is not affected by overflow of millis()!
  */
 void delayMillisWithCheckAndHandleEvents(unsigned long aTimeMillis) {
-#ifdef AVR
+#ifdef ARDUINO
     unsigned long tStartMillis = millis();
     while (millis() - tStartMillis < aTimeMillis) {
-#ifndef USE_SIMPLE_SERIAL
+#  if !defined(USE_SIMPLE_SERIAL) && defined (AVR)
         // check for Arduino serial - code from arduino main.cpp / main()
         if (serialEventRun) {
             serialEventRun();
         }
-#endif
-#else // AVR
+#  endif
+#else // ARDUINO
     unsigned long tStartMillis = getMillisSinceBoot();
     while (getMillisSinceBoot() - tStartMillis < aTimeMillis) {
 #endif
         checkAndHandleEvents();
+        yield();
     }
 }
 
@@ -292,17 +295,13 @@ void checkAndHandleEvents(void) {
     }
 #endif
 
-#ifdef AVR
+#ifdef ARDUINO
 #ifndef USE_SIMPLE_SERIAL
     // get Arduino Serial data first
     serialEvent();
 #endif
-    if (remoteTouchDownEvent.EventType != EVENT_NO_EVENT) {
         handleEvent(&remoteTouchDownEvent);
-    }
-    if (remoteEvent.EventType != EVENT_NO_EVENT) {
         handleEvent(&remoteEvent);
-    }
 #else
     /*
      * check USART buffer, which in turn calls handleEvent() if event was received
@@ -313,9 +312,14 @@ void checkAndHandleEvents(void) {
 
 /**
  * Interprets the event type and manage the callbacks and flags
- * is indirectly called by thread in main loop
+ * It is indirectly called by thread in main loop
  */
 extern "C" void handleEvent(struct BluetoothEvent * aEvent) {
+    // First check if we really have an event here
+    if(aEvent->EventType == EVENT_NO_EVENT ){
+        return;
+    }
+
     uint8_t tEventType = aEvent->EventType;
 
     // local copy of event since the values in the original event may be overwritten if the handler needs long time for its action
@@ -416,7 +420,7 @@ extern "C" void handleEvent(struct BluetoothEvent * aEvent) {
         }
 #else
         //BDButton * is the same as BDButtonHandle_t * since BDButton only has one BDButtonHandle_t element
-        tButtonCallback = (void (*)(BDButtonHandle_t*, int16_t)) tEvent.EventData.GuiCallbackInfo.Handler;;// 2 ;; for pretty print :-(
+        tButtonCallback = (void (*)(BDButtonHandle_t*, int16_t)) tEvent.EventData.GuiCallbackInfo.Handler;; // 2 ;; for pretty print :-(
         tButtonCallback((BDButtonHandle_t*) &tEvent.EventData.GuiCallbackInfo.ObjectIndex,
                 tEvent.EventData.GuiCallbackInfo.ValueForGuiHandler.uint16Values[0]);
 #endif
@@ -505,7 +509,7 @@ extern "C" void handleEvent(struct BluetoothEvent * aEvent) {
         case EVENT_CONNECTION_BUILD_UP:
 //    } else if (tEventType == EVENT_CONNECTION_BUILD_UP) {
         /*
-         * Got max display size for actual orientation and timestamp
+         * Got max display size for current orientation and timestamp
          */
         BlueDisplay1.mMaxDisplaySize.XWidth = tEvent.EventData.DisplaySizeAndTimestamp.DisplaySize.XWidth;
         BlueDisplay1.mMaxDisplaySize.YHeight = tEvent.EventData.DisplaySizeAndTimestamp.DisplaySize.YHeight;
@@ -555,6 +559,7 @@ extern "C" void handleEvent(struct BluetoothEvent * aEvent) {
             sRedrawCallback();
         }
     }
+    sMillisOfLastReceivedBDEvent = millis(); // set time of (last) event
 }
 
 #ifdef LOCAL_DISPLAY_EXISTS

@@ -12,14 +12,18 @@
 #include <Servo.h>
 #include <stdint.h>
 
-#define DEGREES_PER_STEP 20
-#define STEPS_PER_180_DEGREES ((180 / DEGREES_PER_STEP))
-#define NUMBER_OF_DISTANCES ((180 / DEGREES_PER_STEP) + 1)
+#define DEGREES_PER_STEP  18
+#define STEPS_PER_SCAN    9 // -> 162 degrees for 18 DEGREES_PER_STEP
+#define NUMBER_OF_DISTANCES (STEPS_PER_SCAN + 1)
+#define START_DEGREES      ((180 - (DEGREES_PER_STEP * STEPS_PER_SCAN)) / 2) // 9 - we need it symmetrical in the 180 degrees range
 
+#define INDEX_RIGHT 0
+#define INDEX_LEFT STEPS_PER_SCAN
+#if (STEPS_PER_SCAN == 9)
+// Works only for STEPS_PER_SCAN = 9
 #define INDEX_FORWARD_1 4
 #define INDEX_FORWARD_2 5
-#define INDEX_RIGHT 0
-#define INDEX_LEFT STEPS_PER_180_DEGREES
+#endif
 
 struct ForwardDistancesInfoStruct {
     uint8_t RawDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
@@ -28,9 +32,9 @@ struct ForwardDistancesInfoStruct {
     uint8_t IndexOfMinDistance;
     uint8_t MaxDistance;
     uint8_t MinDistance;
-    // 0 degrees => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
-    int8_t WallRightAngleDegree;
-    int8_t WallLeftAngleDegree;
+    // 0 degree => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
+    int8_t WallRightAngleDegrees;
+    int8_t WallLeftAngleDegrees;
 };
 
 extern ForwardDistancesInfoStruct sForwardDistancesInfo;
@@ -45,8 +49,8 @@ extern int sLastDegreesTurned;
 extern Servo USDistanceServo;
 extern uint8_t sLastServoAngleInDegrees; // needed for optimized delay for servo repositioning
 
-extern uint8_t sCountPerScan;
-extern uint8_t sCentimeterPerScan; // = sCountPerScan / 2
+extern uint8_t sCentimeterPerScanTimesTwo;
+extern uint8_t sCentimeterPerScan; // = sCentimeterPerScanTimesTwo / 2
 
 void initUSServo();
 void US_ServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
@@ -62,9 +66,9 @@ const int CENTIMETER_PER_RIDE = 25;
 // I measured ca. 110 ms
 const int MILLIS_FOR_SERVO_20_DEGREES = 120;
 
-bool fillForwardDistancesInfo(bool aShowValues, bool aDoFirstValue);
+void fillAndShowForwardDistancesInfo(bool aShowValues, bool aDoFirstValue);
 void doWallDetection(bool aShowValues);
 int doBuiltInCollisionDetection();
-void driveAutonomousOneStep(bool (*afillForwardDistancesInfoFunction)(bool, bool), int (*aCollisionDetectionFunction)());
+void driveAutonomousOneStep(int (*aCollisionDetectionFunction)());
 
 #endif /* SRC_AUTONOMOUSDRIVE_H_ */
