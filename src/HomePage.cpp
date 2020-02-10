@@ -150,9 +150,12 @@ void drawHomePage(void) {
     SliderLaserPositionVertical.drawSlider();
 #  endif
 #else
-    SliderUSPosition.setActualValueAndDrawBar(sLastServoAngleInDegrees);
+    SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
     SliderUSDistance.drawSlider();
+#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    SliderIRDistance.drawSlider();
+#  endif
 #endif
     SliderSpeed.drawSlider();
     SliderSpeedRight.drawSlider();

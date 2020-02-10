@@ -58,6 +58,7 @@ void stopPathInfoPage(void);
 
 // from AutonomousDrivePage
 extern bool sUseBuiltInAutonomousDriveStrategy;
+extern bool sDoSlowScan;
 extern BDButton TouchButtonStep;
 
 void initAutonomousDrivePage(void);
@@ -78,6 +79,9 @@ void loopTestPage(void);
 void stopTestPage(void);
 extern BDSlider SliderUSPosition;
 extern BDSlider SliderUSDistance;
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+extern BDSlider SliderIRDistance;
+#endif
 
 // from HomePage
 extern BDButton TouchButtonMelody;
@@ -154,7 +158,7 @@ void drawForwardDistancesInfos();
 void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClear);
 
 extern bool sRobotCarStarted;
-extern bool sRunAutonomousDrive;
+extern bool sRuningAutonomousDrive;
 
 extern const int sGetDistancePeriod;
 

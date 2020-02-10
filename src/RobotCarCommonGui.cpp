@@ -18,8 +18,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
-#include "RobotCarGui.h"
 #include "RobotCar.h"
+#include "RobotCarGui.h"
 
 uint8_t sCurrentPage;
 BDButton TouchButtonBackSmall;
@@ -54,7 +54,7 @@ void delayAndLoopGUI(uint16_t aDelayMillis) {
     uint32_t tStartMillis = millis();
     do {
         loopGUI();
-    } while (millis() - tStartMillis > aDelayMillis);
+    } while (millis() - tStartMillis <= aDelayMillis);
 }
 
 void loopGUI(void) {
@@ -106,7 +106,7 @@ void setStartStopButtonValue() {
  */
 void showSpeedSliderValue() {
     if (rightEncoderMotor.ActualSpeed != sLastSpeedSliderValue) {
-        SliderSpeed.setActualValueAndDrawBar(rightEncoderMotor.ActualSpeed);
+        SliderSpeed.setValueAndDrawBar(rightEncoderMotor.ActualSpeed);
         sLastSpeedSliderValue = rightEncoderMotor.ActualSpeed;
     }
 }
@@ -252,8 +252,8 @@ void initDisplay(void) {
     DISPLAY_HEIGHT);
     BlueDisplay1.setCharacterMapping(0x87, 0x2227); // mapping for AND - Forward
     BlueDisplay1.setCharacterMapping(0x88, 0x2228); // mapping for OR - Backwards
-    // Since landscape has 2 orientations, let the user choose the right one.
-    BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_ACTUAL);
+    // Lock to landscape layout
+    BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE);
 
     /*
      * Common control buttons
@@ -284,7 +284,7 @@ void initDisplay(void) {
      */
     SliderSpeed.init(0, 10, BUTTON_WIDTH_6, SPEED_SLIDER_SIZE, 200, 0, COLOR_YELLOW,
     SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doSpeedSlider);
-    SliderSpeed.setScaleFactor(255.0 / SPEED_SLIDER_SIZE); // Slider is virtually 2 times larger
+    SliderSpeed.setScaleFactor(255.0 / SPEED_SLIDER_SIZE); // Slider is virtually 2 times larger, values were divided by 2
 
     SliderSpeedLeft.init(BUTTON_WIDTH_6 + 4, 0, BUTTON_WIDTH_16, SPEED_SLIDER_SIZE / 2, SPEED_SLIDER_SIZE / 2 - 1, 0,
     SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
@@ -324,14 +324,20 @@ void readAndPrintVinPeriodically() {
         readVINVoltage();
         dtostrf(sVINVoltage, 4, 2, tVCCString);
         sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
+        uint16_t tPosX;
+        uint8_t tPosY;
         if (sCurrentPage == PAGE_HOME) {
-            BlueDisplay1.drawText(BUTTON_WIDTH_8_POS_4,
-            BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11_DECEND, tDataBuffer,
-            TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
-        } else {
-            BlueDisplay1.drawText(BUTTON_WIDTH_4_POS_4, BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND, tDataBuffer, TEXT_SIZE_11,
-            COLOR_BLACK, COLOR_WHITE);
+            tPosX = BUTTON_WIDTH_8_POS_4;
+            tPosY = BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11_DECEND;
         }
+        if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
+            tPosX = BUTTON_WIDTH_3_POS_2 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
+            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+        } else {
+            tPosX = BUTTON_WIDTH_3_POS_3 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
+            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+        }
+        BlueDisplay1.drawText(tPosX, tPosY, tDataBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
     }
 }
 

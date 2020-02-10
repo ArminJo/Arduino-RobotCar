@@ -26,13 +26,10 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
-
-#include "RobotCarGui.h"
 #include "RobotCar.h"
-#include "AutonomousDrive.h"
-#include <HCSR04.h>
+#include "RobotCarGui.h"
 
-#include <avr/interrupt.h>
+#include <HCSR04.h>
 
 /*
  * Motor GUI
@@ -62,6 +59,10 @@ bool sShowDebug = false;
 BDSlider SliderUSPosition;
 BDSlider SliderUSDistance;
 unsigned int sSliderLastCentimeter;
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+BDSlider SliderIRDistance;
+unsigned int sIRSliderLastCentimeter;
+#endif
 
 const int sGetDistancePeriod = 500;
 
@@ -121,11 +122,22 @@ void initTestPage(void) {
     /*
      * scaled (0 to 180) US Sliders
      */
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, BUTTON_WIDTH_10, US_SLIDER_SIZE, 200, 0,
-    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT,
-    NULL);
-    SliderUSDistance.setScaleFactor(2);
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    SliderIRDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
+    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
+    SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, 10, (BUTTON_WIDTH_10 / 2), US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
+    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+#else
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, BUTTON_WIDTH_10, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
+    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+#endif
+    SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
     SliderUSDistance.setValueUnitString("cm");
+    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
 
     SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, 10, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
@@ -200,10 +212,12 @@ void drawTestPage(void) {
     SliderSpeedLeft.drawSlider();
     TouchButtonGetAndStoreSpeed.drawButton();
 
-    SliderUSPosition.setActualValueAndDrawBar(sLastServoAngleInDegrees);
+    SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
     SliderUSDistance.drawSlider();
-
+#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    SliderIRDistance.drawSlider();
+#  endif
     printMotorValues();
     if (sShowDebug) {
         printMotorDebugValues();
@@ -245,7 +259,7 @@ void showDistance(unsigned int aCentimeter) {
 // feedback as slider length
     if (aCentimeter != sSliderLastCentimeter) {
         sSliderLastCentimeter = aCentimeter;
-        SliderUSDistance.setActualValueAndDrawBar(aCentimeter);
+        SliderUSDistance.setValueAndDrawBar(aCentimeter);
     }
 }
 
@@ -256,7 +270,12 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
         long tMillis = millis();
         if (sLastUSMeasurementMillis + aPeriodMillis < tMillis) {
             sLastUSMeasurementMillis = tMillis;
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+            unsigned int tIRCentimeter = getIRDistanceAsCentimeter();
+            SliderIRDistance.setValueAndDrawBar(tIRCentimeter);
+#endif
             unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(300);
+
             // feedback as slider length
             showDistance(tCentimeter);
         }
@@ -288,3 +307,14 @@ void printMotorDebugValues() {
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
 }
 
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+uint8_t getIRDistanceAsCentimeter() {
+    float tVolt = analogRead(IR_DISTANCE_SENSOR_PIN);
+    // * 0.004887585 for 1023 = 5V
+    // Model 1080
+    return (29.988 * pow(tVolt * 0.004887585, -1.173)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
+
+    // Model 20150
+//    return (60.374 * pow(tVolt * 0.004887585, -1.16)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
+}
+#endif

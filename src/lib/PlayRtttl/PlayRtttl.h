@@ -41,7 +41,9 @@
 #endif
 #include "pitches.h"
 
-#define VERSION_PLAY_RTTTL 1.3.2
+#define VERSION_PLAY_RTTTL "1.3.2"
+#define VERSION_PLAY_RTTTL_NUMERICAL 132
+
 /*
  * Version 1.3.2 - 1/2020
  * - supporting direct tone output at pin 11 for ATmega328. Can be used with interrupt blocking libraries for NeoPixel etc.

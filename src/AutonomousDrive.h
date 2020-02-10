@@ -58,11 +58,6 @@ void US_ServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
 /*
  * Values for included implementation
  */
-const int CENTIMETER_PER_RIDE = 25;
-
-// do not measure and process distances greater than 100 cm
-#define US_TIMEOUT_CENTIMETER 100
-
 // I measured ca. 110 ms
 const int MILLIS_FOR_SERVO_20_DEGREES = 120;
 

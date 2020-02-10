@@ -18,20 +18,32 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
-#include "RobotCarGui.h"
 #include "RobotCar.h"
+#include "RobotCarGui.h"
 
 BDButton TouchButtonStepMode;
 BDButton TouchButtonStep;
 BDButton TouchButtonSingleScan;
+BDButton TouchButtonScanSpeed;
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+BDButton TouchButtonScanMode;
+#endif
 
 BDButton TouchButtonTestUser;
 BDButton TouchButtonBuiltInAutonomousDrive;
 
 uint8_t sStepMode = MODE_CONTINUOUS;
 bool sDoStep = false; // if true => do one step
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#define SCAN_MODE_BOTH  0
+#define SCAN_MODE_US    1
+#define SCAN_MODE_IR    2
+uint8_t sScanMode = SCAN_MODE_BOTH;
+#endif
 
-bool sRunAutonomousDrive = false;
+bool sDoSlowScan = false;
+
+bool sRuningAutonomousDrive = false;
 bool sUseBuiltInAutonomousDriveStrategy = true;
 
 void setStepModeButtonCaption();
@@ -73,6 +85,32 @@ void doStep(BDButton * aTheTouchedButton, int16_t aValue) {
     }
 }
 
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+void setScanModeButtonCaption() {
+    if (sScanMode == SCAN_MODE_BOTH) {
+        TouchButtonScanMode.setCaption(F("Both->US"));
+    } else if (sScanMode == SCAN_MODE_US) {
+        TouchButtonScanMode.setCaption(F("US->IR"));
+    } else {
+        TouchButtonScanMode.setCaption(F("IR->Both"));
+    }
+}
+
+void doScanMode(BDButton * aTheTouchedButton, int16_t aValue) {
+    sScanMode++;
+    if (sScanMode > SCAN_MODE_IR) {
+        sScanMode = SCAN_MODE_BOTH;
+    }
+    setScanModeButtonCaption();
+    TouchButtonScanMode.drawButton();
+}
+
+#endif
+
+void doChangeScanSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
+    sDoSlowScan = aValue;
+}
+
 void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
     clearPrintedForwardDistancesInfos();
     fillAndShowForwardDistancesInfo(true, true);
@@ -81,9 +119,9 @@ void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
     drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE, false);
 }
 
-void startStopAutomomousDrive(bool aDoStart, bool aDoInternalAutonomousDrive) {
-    sRunAutonomousDrive = aDoStart;
-    sUseBuiltInAutonomousDriveStrategy = aDoInternalAutonomousDrive;
+void startStopAutomomousDrive(bool aDoStart, bool aUseBuiltInAutonomousDriveStrategy) {
+    sRuningAutonomousDrive = aDoStart;
+    sUseBuiltInAutonomousDriveStrategy = aUseBuiltInAutonomousDriveStrategy;
     /*
      * Switch to right page. Needed for call from timeout condition.
      */
@@ -93,24 +131,22 @@ void startStopAutomomousDrive(bool aDoStart, bool aDoInternalAutonomousDrive) {
     /*
      *  manage buttons
      */
-    TouchButtonBuiltInAutonomousDrive.setValue(aDoStart, (sCurrentPage == PAGE_AUTOMATIC_CONTROL));
-
-    bool tInternalAutonomousDrive = aDoStart;
-    bool tExternalAutonomousDrive = aDoStart;
+    bool tInternalAutonomousDrive = false;
+    bool tExternalAutonomousDrive = false;
     if (aDoStart) {
-        sCurrentPage = PAGE_AUTOMATIC_CONTROL;
-        // decide which button to disable if started
-        if (aDoInternalAutonomousDrive) {
-            tExternalAutonomousDrive = false;
+        resetPathData();
+        sDoStep = true; // enable next step
+
+        // decide which button enabled on start
+        if (aUseBuiltInAutonomousDriveStrategy) {
+            tInternalAutonomousDrive = true;
         } else {
             /*
-             * Own test starts in mode SINGLE_STEP
+             * Own test always starts in mode SINGLE_STEP
              */
             setStepMode(MODE_SINGLE_STEP);
-            tInternalAutonomousDrive = false;
+            tExternalAutonomousDrive = true;
         }
-        sDoStep = true;
-        resetPathData();
     }
     TouchButtonBuiltInAutonomousDrive.setValueAndDraw(tInternalAutonomousDrive);
     TouchButtonTestUser.setValueAndDraw(tExternalAutonomousDrive);
@@ -130,7 +166,7 @@ void setStepModeButtonCaption() {
     if (sStepMode == MODE_CONTINUOUS) {
         TouchButtonStepMode.setCaption(F("Continuous\n->\nStep to turn"));
     } else if (sStepMode == MODE_STEP_TO_NEXT_TURN) {
-        TouchButtonStepMode.setCaption(F("Step\n->\nSingle step"));
+        TouchButtonStepMode.setCaption(F("Step to turn\n->\nSingle step"));
     } else {
         TouchButtonStepMode.setCaption(F("Single step\n->\nContinuous"));
     }
@@ -144,18 +180,29 @@ void initAutonomousDrivePage(void) {
     TouchButtonSingleScan.init(0, BUTTON_HEIGHT_4_LINE_2, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, F("Scan"),
     TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doSingleScan);
 
+    TouchButtonScanSpeed.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
+    BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_BLACK, F("Scan slow"), TEXT_SIZE_16,
+            FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sDoSlowScan, &doChangeScanSpeed);
+    TouchButtonScanSpeed.setCaptionForValueTrue("Scan fast");
+
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    TouchButtonScanMode.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
+    BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_RED, "", TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doScanMode);
+    setScanModeButtonCaption();
+#endif
+
     TouchButtonStep.init(0, BUTTON_HEIGHT_4_LINE_3, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, F("Step"),
     TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doStep);
 
     TouchButtonBuiltInAutonomousDrive.init(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
             F("Start\nBuiltin"),
             TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN,
-            sRunAutonomousDrive && sUseBuiltInAutonomousDriveStrategy, &doStartStopAutomomousDrive);
+            sRuningAutonomousDrive && sUseBuiltInAutonomousDriveStrategy, &doStartStopAutomomousDrive);
     TouchButtonBuiltInAutonomousDrive.setCaptionForValueTrue(F("Stop"));
 
     TouchButtonTestUser.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
             F("Start\nUser"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN,
-            sRunAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy, &doStartStopTestUser);
+            sRuningAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy, &doStartStopTestUser);
     TouchButtonTestUser.setCaptionForValueTrue(F("Stop\nUser"));
 
 }
@@ -172,14 +219,19 @@ void drawAutonomousDrivePage(void) {
     TouchButtonSingleScan.drawButton();
     TouchButtonStep.drawButton();
 
+#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    TouchButtonScanMode.drawButton();
+#endif
+    TouchButtonScanSpeed.drawButton();
+
     TouchButtonBuiltInAutonomousDrive.drawButton();
     TouchButtonTestUser.drawButton();
     TouchButtonNextPage.drawButton();
 }
 
 void startAutonomousDrivePage(void) {
-    TouchButtonTestUser.setValue(sRunAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy);
-    TouchButtonBuiltInAutonomousDrive.setValue(sRunAutonomousDrive && sUseBuiltInAutonomousDriveStrategy);
+    TouchButtonTestUser.setValue(sRuningAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy);
+    TouchButtonBuiltInAutonomousDrive.setValue(sRuningAutonomousDrive && sUseBuiltInAutonomousDriveStrategy);
     setStepModeButtonCaption();
 
     TouchButtonBackSmall.setPosition(BUTTON_WIDTH_4_POS_4, 0);
@@ -220,8 +272,8 @@ void drawForwardDistancesInfos() {
          */
         uint8_t tDistance = sForwardDistancesInfo.RawDistancesArray[i];
         tColor = COLOR_ORANGE;
-        if (tDistance >= US_TIMEOUT_CENTIMETER) {
-            tDistance = US_TIMEOUT_CENTIMETER;
+        if (tDistance >= DISTANCE_TIMEOUT_CM) {
+            tDistance = DISTANCE_TIMEOUT_CM;
             tColor = COLOR_GREEN;
         }
         if (tDistance > sCentimeterPerScanTimesTwo) {
@@ -241,7 +293,7 @@ void drawForwardDistancesInfos() {
 
 void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClear) {
     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-        color16_t tColor = COLOR_YELLOW;
+        color16_t tColor = COLOR_BLUE;
         int tDegreeToDisplay = aDegreeToTurn;
         if (tDegreeToDisplay == 180) {
             tColor = COLOR_PURPLE;

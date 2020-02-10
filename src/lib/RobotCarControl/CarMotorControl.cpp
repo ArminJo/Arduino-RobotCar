@@ -205,7 +205,7 @@ void CarMotorControl::initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirec
         tFactor = FACTOR_DEGREE_TO_COUNT_4WD_CAR;
     }
     if (aRotationDegrees > 0) {
-// turn left, default is TURN_FORWARD
+        // turn left, default is TURN_FORWARD
         tDistanceCountRight = (aRotationDegrees * tFactor) + 0.5;
         tDistanceCountLeft = 0;
         if (aTurnDirection == TURN_IN_PLACE) {
@@ -213,7 +213,7 @@ void CarMotorControl::initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirec
             tDistanceCountRight = tDistanceCountRight / 2;
         }
     } else {
-// turn right, default is TURN_FORWARD
+        // turn right, default is TURN_FORWARD
         tDistanceCountLeft = (-aRotationDegrees * tFactor) + 0.5;
         tDistanceCountRight = 0;
         if (aTurnDirection == TURN_IN_PLACE) {
@@ -228,11 +228,11 @@ void CarMotorControl::initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirec
         tDistanceCountLeft = -tDistanceCountTemp;
 
     }
-// This in turn sets ActualMaxSpeed to MaxSpeed.
+    // This in turn sets ActualMaxSpeed to MaxSpeed.
     rightEncoderMotor.initGoDistanceCount(tDistanceCountRight);
     leftEncoderMotor.initGoDistanceCount(tDistanceCountLeft);
     if (aUseSlowSpeed) {
-// adjust MaxSpeed at last
+        // adjust MaxSpeed
         rightEncoderMotor.ActualMaxSpeed = rightEncoderMotor.MinSpeed + rightEncoderMotor.MinSpeed / 2;
         leftEncoderMotor.ActualMaxSpeed = leftEncoderMotor.MinSpeed + leftEncoderMotor.MinSpeed / 2;
     }
