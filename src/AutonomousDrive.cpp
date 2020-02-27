@@ -7,8 +7,7 @@
  * doBuiltInCollisionDetection(): decision where to turn in dependency of the acquired distances.
  * driveAutonomousOneStep(): The loop which handles the start/stop, single step and path output functionality.
  *
- *  Created on: 08.11.2016
- *  Copyright (C) 2016  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This program is distributed in the hope that it will be useful,
@@ -27,10 +26,11 @@
 #include "RobotCarGui.h"
 
 #include "HCSR04.h"
+#include "Distance.h"
 
 ForwardDistancesInfoStruct sForwardDistancesInfo;
 
-Servo USDistanceServo;
+Servo DistanceServo;
 uint8_t sLastServoAngleInDegrees; // 0 - 180 needed for optimized delay for servo repositioning
 
 // Storage for turning decision especially for single step mode
@@ -44,8 +44,8 @@ uint8_t sCentimeterPerScanTimesTwo = CENTIMETER_PER_RIDE * 2; // = encoder count
 uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE;
 
 void initUSServo() {
-    USDistanceServo.attach(US_SERVO_PIN);
-    US_ServoWriteAndDelay(90);
+    DistanceServo.attach(DISTANCE_SERVO_PIN);
+    DistanceServoWriteAndDelay(90);
 }
 
 //#define USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
@@ -53,7 +53,7 @@ void initUSServo() {
  * sets also sLastServoAngleInDegrees to enable optimized servo movement and delays
  * SG90 Micro Servo has reached its end position if the current (200 mA) is low for more than 11 to 14 ms
  */
-void US_ServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
+void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 
     if (aTargetDegrees > 220) {
         // handle underflow
@@ -98,7 +98,7 @@ void US_ServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 
     // My servo is top down and therefore inverted
     aTargetDegrees = 180 - aTargetDegrees;
-    USDistanceServo.write(aTargetDegrees);
+    DistanceServo.write(aTargetDegrees);
     if (doDelay) {
 // Synchronize before doing delay
         rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
@@ -110,7 +110,12 @@ void US_ServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 //        delay(SERVO_INITIAL_DELAY);
 //        digitalWrite(DEBUG_OUT_PIN, LOW);
 
-// factor 8 gives a fairly reproducible result, factor 4 is a bit too fast
+        /*
+         * Factor 8 gives a fairly reproducible US result, but some dropouts for IR
+         * factor 7 gives some strange (to small) values for US.
+         *
+         */
+// , factor 4 is a bit too fast, even 7 gives some strange values
         uint16_t tWaitDelayforServo;
         if (sDoSlowScan) {
             tWaitDelayforServo = tDeltaDegrees * 16; // 16 => 288 ms for 18 degrees
@@ -118,7 +123,11 @@ void US_ServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 #ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
             tWaitDelayforServo = tDeltaDegrees * 5;
 #else
-            tWaitDelayforServo = tDeltaDegrees * 7; // 128 ms for 18 degrees
+#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+            tWaitDelayforServo = tDeltaDegrees * 9; // 9 => 162 ms for 18 degrees
+#  else
+            tWaitDelayforServo = tDeltaDegrees * 8; // 7 => 128 ms, 8 => 144 for 18 degrees
+#  endif
 #endif
         }
         delayAndLoopGUI(tWaitDelayforServo);
@@ -161,17 +170,32 @@ void __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, boo
         /*
          * rotate servo, wait and get distance
          */
-        US_ServoWriteAndDelay(tCurrentDegrees, true);
-
-        unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(DISTANCE_TIMEOUT_CM);
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-        unsigned int tIRCentimeter = getIRDistanceAsCentimeter();
-        // Take the minimum of the two values
-        if(tCentimeter > tIRCentimeter){
-            tCentimeter = tIRCentimeter;
+        DistanceServoWriteAndDelay(tCurrentDegrees, true);
+#ifdef CAR_HAS_TOF_DISTANCE_SENSOR
+        if (sScanMode == SCAN_MODE_BOTH || sScanMode == SCAN_MODE_IR) {
+            sToFDistanceSensor.startRanging();
         }
 #endif
 
+        unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(DISTANCE_TIMEOUT_CM);
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+        unsigned int tIRCentimeter;
+        if (sScanMode == SCAN_MODE_BOTH || sScanMode == SCAN_MODE_IR) {
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
+        tIRCentimeter = getIRDistanceAsCentimeter();
+#  elif defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+            tIRCentimeter = readToFDistanceAsCentimeter();
+#  endif
+            if (sScanMode == SCAN_MODE_IR) {
+                tCentimeter = tIRCentimeter;
+            } else {
+                // Scan mode BOTH => Take the minimum of the two values
+                if (tCentimeter > tIRCentimeter) {
+                    tCentimeter = tIRCentimeter;
+                }
+            }
+        }
+#endif
         if (((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tCentimeter <= sCentimeterPerScanTimesTwo)
                 || (!sRuningAutonomousDrive)) {
             /*
@@ -258,7 +282,7 @@ uint8_t computeNeigbourValue(uint8_t aDegreesPerStepValue, uint8_t a2DegreesPerS
      * The computation of course works for other values of DEGREES_PER_STEP!
      */
     float tYat20degrees = sin((PI / 180) * DEGREES_PER_STEP) * aDegreesPerStepValue; // e.g. 20 Degree
-    // assume current = 40 Degree
+// assume current = 40 Degree
     float tYat40degrees = sin((PI / 180) * (DEGREES_PER_STEP * 2)) * a2DegreesPerStepValue; // e.g. 40 Degree
 
 //    char tStringBuffer[] = "A=_______ L=_______";
@@ -486,7 +510,7 @@ void doWallDetection(bool aShowValues) {
  */
 int doBuiltInCollisionDetection() {
     int tDegreeToTurn = 0;
-    // 5 is too low
+// 5 is too low
     if (sForwardDistancesInfo.MinDistance < 7) {
         /*
          * Min Distance too small => go back and scan again

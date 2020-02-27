@@ -40,6 +40,7 @@ public:
     //This stops motors
     void setDirection(bool goForward);
     void updateMotors();
+    bool needsFastUpdates();
     void activateMotors();
     void shutdownMotors(bool doBrake);
     void resetAndShutdownMotors();

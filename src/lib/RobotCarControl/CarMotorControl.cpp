@@ -66,6 +66,14 @@ void CarMotorControl::shutdownMotors(bool doBrake) {
     leftEncoderMotor.shutdownMotor(doBrake);
 }
 
+/*
+ * If motor is accelerating or decelerating then updateMotor needs to be called at a fast rate otherwise it will not work correctly
+ */
+bool CarMotorControl::needsFastUpdates() {
+    return (rightEncoderMotor.State == MOTOR_STATE_RAMP_DOWN || rightEncoderMotor.State == MOTOR_STATE_RAMP_UP
+            || leftEncoderMotor.State == MOTOR_STATE_RAMP_DOWN || leftEncoderMotor.State == MOTOR_STATE_RAMP_UP);
+}
+
 void CarMotorControl::updateMotors() {
     rightEncoderMotor.updateMotor();
     leftEncoderMotor.updateMotor();
@@ -121,6 +129,7 @@ void CarMotorControl::startAndWaitForFullSpeed() {
         leftEncoderMotor.updateMotor();
     } while (rightEncoderMotor.State != MOTOR_STATE_FULL_SPEED || leftEncoderMotor.State != MOTOR_STATE_FULL_SPEED);
 }
+
 
 /*
  * Set NextChangeMaxTargetCount to change state from MOTOR_STATE_FULL_SPEED to MOTOR_STATE_RAMP_DOWN

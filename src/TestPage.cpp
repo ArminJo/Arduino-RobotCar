@@ -1,16 +1,11 @@
 /*
- * RobotCarGui.cpp
+ * TestPage.cpp
  *
- *  Contains all common GUI elements for operating and controlling the RobotCar.
+ *  Contains all GUI elements for test controlling the RobotCar.
  *
  *  Calibration: Sets lowest speed for which wheels are moving.
  *  Speed Slider left: Sets speed for manual control which serves also as maximum speed for autonomous drive if "Stored"
  *  Store: Stores calibration info and maximum speed.
- *  Cont ->Step / Step -> SStep, SStep->Cont: Switches mode from "continuous drive" to "drive until next turn" to "drive CENTIMETER_PER_RIDE_PRO"
- *  Start Simple: Start simple driving algorithm (using the 2 "simple" functions in RobotCar.cpp)
- *  Start Pro: Start elaborated driving algorithm
- *
- *  insertToPath() and DrawPath() to show the path we were driving.
  *
  *  Needs BlueDisplay library.
  *
@@ -29,7 +24,7 @@
 #include "RobotCar.h"
 #include "RobotCarGui.h"
 
-#include <HCSR04.h>
+//#include <HCSR04.h>
 
 /*
  * Motor GUI
@@ -52,17 +47,6 @@ BDButton TouchButton90DegreeLeft;
 BDButton TouchButton360Degree;
 
 bool sShowDebug = false;
-
-/*
- * UltraSonic control GUI
- */
-BDSlider SliderUSPosition;
-BDSlider SliderUSDistance;
-unsigned int sSliderLastCentimeter;
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-BDSlider SliderIRDistance;
-unsigned int sIRSliderLastCentimeter;
-#endif
 
 const int sGetDistancePeriod = 500;
 
@@ -105,10 +89,6 @@ void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
     BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Speed [11 - 255]", sLastSpeedSliderValue);
 }
 
-void doUSServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
-    US_ServoWriteAndDelay(aValue);
-}
-
 /*
  * stop and reset motors, but do not stop control
  */
@@ -119,32 +99,6 @@ void doReset(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 void initTestPage(void) {
-    /*
-     * scaled (0 to 180) US Sliders
-     */
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-    SliderIRDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
-    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-    SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
-    SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, 10, (BUTTON_WIDTH_10 / 2), US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
-    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-#else
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, BUTTON_WIDTH_10, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
-    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-#endif
-    SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
-    SliderUSDistance.setValueUnitString("cm");
-    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-
-    SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, 10, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
-            FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
-    SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
-    SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderUSPosition.setValueUnitString("\xB0"); // \xB0 is degree character
-
     /*
      * Control buttons
      */
@@ -215,7 +169,7 @@ void drawTestPage(void) {
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
     SliderUSDistance.drawSlider();
-#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     SliderIRDistance.drawSlider();
 #  endif
     printMotorValues();
@@ -252,36 +206,11 @@ void loopTestPage(void) {
 }
 
 void stopTestPage(void) {
-
 }
 
-void showDistance(unsigned int aCentimeter) {
-// feedback as slider length
-    if (aCentimeter != sSliderLastCentimeter) {
-        sSliderLastCentimeter = aCentimeter;
-        SliderUSDistance.setValueAndDrawBar(aCentimeter);
-    }
-}
-
-void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
-    if (rightEncoderMotor.State != MOTOR_STATE_RAMP_DOWN && rightEncoderMotor.State != MOTOR_STATE_RAMP_UP
-            && leftEncoderMotor.State != MOTOR_STATE_RAMP_DOWN && leftEncoderMotor.State != MOTOR_STATE_RAMP_UP) {
-        static long sLastUSMeasurementMillis;
-        long tMillis = millis();
-        if (sLastUSMeasurementMillis + aPeriodMillis < tMillis) {
-            sLastUSMeasurementMillis = tMillis;
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-            unsigned int tIRCentimeter = getIRDistanceAsCentimeter();
-            SliderIRDistance.setValueAndDrawBar(tIRCentimeter);
-#endif
-            unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(300);
-
-            // feedback as slider length
-            showDistance(tCentimeter);
-        }
-    }
-}
-
+/*
+ * Is called after printMotorValues, so we can take the Draw parameter from it
+ */
 void printMotorDebugValues() {
     /*
      * Debug info
@@ -289,32 +218,21 @@ void printMotorDebugValues() {
     uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 70;
     sprintf_P(sStringBuffer, PSTR("ramp1%3d %3d"), leftEncoderMotor.DistanceCountAfterRampUp,
             rightEncoderMotor.DistanceCountAfterRampUp);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("endSp%3d %3d"), leftEncoderMotor.SpeedAtTargetCountReached,
             rightEncoderMotor.SpeedAtTargetCountReached);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("debug%3d %3d"), leftEncoderMotor.Debug, rightEncoderMotor.Debug);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("dcnt %3d %3d"), leftEncoderMotor.DebugCount, rightEncoderMotor.DebugCount);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("tcnt %3d %3d"), leftEncoderMotor.LastTargetDistanceCount,
             rightEncoderMotor.LastTargetDistanceCount);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 }
 
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-uint8_t getIRDistanceAsCentimeter() {
-    float tVolt = analogRead(IR_DISTANCE_SENSOR_PIN);
-    // * 0.004887585 for 1023 = 5V
-    // Model 1080
-    return (29.988 * pow(tVolt * 0.004887585, -1.173)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
-
-    // Model 20150
-//    return (60.374 * pow(tVolt * 0.004887585, -1.16)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
-}
-#endif

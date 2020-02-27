@@ -8,7 +8,7 @@
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
  *  Just overwrite the 2 functions myOwnFillForwardDistancesInfo() and doUserCollisionDetection() to test your own skill.
  *
- *  Copyright (C) 2016  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This program is distributed in the hope that it will be useful,
@@ -25,6 +25,7 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 #include "HCSR04.h"
 #include "ADCUtils.h"
@@ -123,8 +124,11 @@ void setup() {
     // Just to know which program is running on my Arduino
     BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
 
+    initDistance();
+
     readVINVoltage();
     randomSeed(sVINVoltage * 10000);
+    tone(SPEAKER_PIN, 2200, 100);
 }
 
 void loop() {
@@ -153,13 +157,13 @@ void loop() {
     loopGUI();
 
     /*
-     * After 2 minutes of user inactivity, make noise by scanning with US Servo and repeat it every minute
+     * After 4 minutes of user inactivity, make noise by scanning with US Servo and repeat it every 2. minute
      */
 #if VERSION_BLUE_DISPLAY_NUMERICAL >= 121
-    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + 120000L < millis()) {
-        sMillisOfLastReceivedBDEvent = millis() - 60000; // adjust sMillisOfLastReceivedBDEvent to have the next scan in 1 minute
+    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + 240000L < millis()) {
+        sMillisOfLastReceivedBDEvent = millis() - 120000; // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
         fillAndShowForwardDistancesInfo((sCurrentPage == PAGE_AUTOMATIC_CONTROL), true);
-        USDistanceServo.write(90); // set servo back to normal
+        DistanceServo.write(90); // set servo back to normal
     }
 #endif
 
@@ -223,37 +227,42 @@ void doAutonomousDrive() {
         insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
     }
     EncoderMotor::EnableValuesPrint = true;
-    US_ServoWriteAndDelay(90);
+    DistanceServoWriteAndDelay(90);
 }
 
 void readVINVoltage() {
     uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(VIN_11TH_IN_CHANNEL, INTERNAL);
     float tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
-    // Switch back but do not wait, since we do not need the ADC in the next 400 micro seconds
+    // Switch back (to DEFAULT)
     ADMUX = tOldADMUX;
 
 // assume resistor network of 100k / 10k (divider by 11)
 // tVCC * 0,01181640625
 #ifdef USE_TB6612_BREAKOUT_BOARD
     // we have a Diode (needs 0.8 volt) between LIPO and VIN
-    sVINVoltage = ((tVIN * (11.0 * 1.1)) / 1023) + 0.8;
+    sVINVoltage = (tVIN * ((11.0 * 1.07) / 1023)) + 0.8;
 #else
-    sVINVoltage = (tVIN * (11.0 * 1.1)) / 1023;
+    sVINVoltage = tVIN * ((11.0 * 1.07) / 1023);
 #endif
 }
 
 void checkForLowVoltage() {
     if (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
-        BlueDisplay1.clearDisplay();
-        BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
-        BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + TEXT_SIZE_33_HEIGHT, F("too low"), TEXT_SIZE_33, COLOR_RED,
-        COLOR_WHITE);
         drawCommonGui();
+        uint16_t tNextX = BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
+        char tDataBuffer[18];
+        char tVCCString[6];
+        dtostrf(sVINVoltage, 4, 2, tVCCString);
+        sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
+        BlueDisplay1.drawText(tNextX + TEXT_SIZE_33_WIDTH, 50, tDataBuffer);
+        // alternatively call readAndPrintVinPeriodically();
+
+        BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + TEXT_SIZE_33_HEIGHT, F("too low"));
         RobotCar.resetAndShutdownMotors();
-        while (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
+        do {
             readAndPrintVinPeriodically();
             delay(PRINT_VOLTAGE_PERIOD_MILLIS);
-        }
+        } while (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD);
         // refresh current page
         GUISwitchPages(NULL, 0);
     }
@@ -265,7 +274,7 @@ void checkForLowVoltage() {
  * Prepare for tone, use motor as loudspeaker
  */
 void playRandomMelody() {
-    // this may be reseted by checkAndHandleEvents()
+    // this flag may be reseted by checkAndHandleEvents()
     sPlayMelody = true;
     BlueDisplay1.debug("Play melody");
 
@@ -293,12 +302,21 @@ void playRandomMelody() {
     sPlayMelody = false;
 }
 
+void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
+    OCR2B = 0;
+    bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
+    tone(MOTOR_0_FORWARD_PIN, aFrequency);
+    delay(aDuration);
+    noTone(MOTOR_0_FORWARD_PIN);
+    digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor
+    bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
+}
+
 /*
  * set INVERTED_TONE_PIN to inverse value of TONE_PIN to avoid DC current
  */
 #ifdef USE_TB6612_BREAKOUT_BOARD
 ISR(TIMER2_COMPB_vect) {
-    digitalToggleFast(13);
     digitalWriteFast(MOTOR_0_BACKWARD_PIN, !digitalReadFast(MOTOR_0_FORWARD_PIN));
 }
 #endif
@@ -309,13 +327,13 @@ ISR(TIMER2_COMPB_vect) {
  */
 Servo LaserPanServo;
 #ifdef USE_PAN_TILT_SERVO
-Servo LaserTiltServo;
+Servo TiltServo;
 #endif
 
 void initLaserServos() {
 #ifdef USE_PAN_TILT_SERVO
-    LaserTiltServo.attach(LASER_SERVO_TILT_PIN);
-    LaserTiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
+    TiltServo.attach(LASER_SERVO_TILT_PIN);
+    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
 #endif
 // initialize and set Laser pan servo
     LaserPanServo.attach(LASER_SERVO_PAN_PIN);

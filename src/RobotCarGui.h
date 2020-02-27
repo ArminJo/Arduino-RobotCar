@@ -15,6 +15,10 @@
 #define PATH_LENGTH_MAX 100
 
 #define PRINT_VOLTAGE_PERIOD_MILLIS 3000
+extern uint32_t sMillisOfNextVCCInfo;
+
+// a string buffer for BD info output
+extern char sStringBuffer[128];
 
 /****************************************************************************
  * Change this if you have reprogrammed the hc05 module for other baud rate
@@ -24,12 +28,12 @@
 #define BLUETOOTH_BAUD_RATE BAUD_9600
 #endif
 
-#define DISPLAY_WIDTH DISPLAY_DEFAULT_WIDTH // 320
-#define DISPLAY_HEIGHT DISPLAY_DEFAULT_HEIGHT // 240
+#define DISPLAY_WIDTH DISPLAY_HALF_VGA_WIDTH   // 320
+#define DISPLAY_HEIGHT DISPLAY_HALF_VGA_HEIGHT // 240
 
-#define SPEED_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3
-#define US_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3 // 128
-#define LASER_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3 // 128
+#define SPEED_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3  // 128
+#define US_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3     // 128
+#define LASER_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3  // 128
 
 #define US_DISTANCE_MAP_ORIGIN_X 200
 #define US_DISTANCE_MAP_WIDTH_HALF 100
@@ -47,7 +51,9 @@ extern uint8_t sCurrentPage;
 #define MODE_STEP_TO_NEXT_TURN 1 // stop before a turn
 #define MODE_SINGLE_STEP 2 // stop after CENTIMETER_PER_RIDE_2
 extern uint8_t sStepMode;
-extern bool sDoStep;
+
+void showUSDistance(unsigned int aCentimeter);
+void showIRDistance(unsigned int aCentimeter);
 
 // from PathInfoPage
 void initPathInfoPage(void);
@@ -57,9 +63,11 @@ void loopPathInfoPage(void);
 void stopPathInfoPage(void);
 
 // from AutonomousDrivePage
+extern BDButton TouchButtonStep;
+
 extern bool sUseBuiltInAutonomousDriveStrategy;
 extern bool sDoSlowScan;
-extern BDButton TouchButtonStep;
+extern bool sDoStep;
 
 void initAutonomousDrivePage(void);
 void drawAutonomousDrivePage(void);
@@ -79,7 +87,7 @@ void loopTestPage(void);
 void stopTestPage(void);
 extern BDSlider SliderUSPosition;
 extern BDSlider SliderUSDistance;
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 extern BDSlider SliderIRDistance;
 #endif
 
@@ -132,7 +140,6 @@ extern char sStringBuffer[128];
 
 void setupGUI(void);
 void loopGUI(void);
-//void resetGUIControls();
 
 void initDisplay(void);
 void checkAndShowDistancePeriodically(uint16_t aPeriodMillis);
@@ -163,3 +170,5 @@ extern bool sRuningAutonomousDrive;
 extern const int sGetDistancePeriod;
 
 #endif /* SRC_ROBOTCARGUI_H_ */
+
+#pragma once

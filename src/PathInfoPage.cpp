@@ -39,8 +39,7 @@ void drawPathInfoPage(void) {
     drawCommonGui();
 
     DrawPath();
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + (2 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Path"),
-    TEXT_SIZE_22, COLOR_BLUE, COLOR_NO_BACKGROUND);
+    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + (2 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Path"));
 
     /*
      * relocate small back and step buttons

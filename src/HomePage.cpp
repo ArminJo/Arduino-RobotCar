@@ -47,7 +47,7 @@ void doLaserServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
 
 #ifdef USE_PAN_TILT_SERVO
 void doVerticalLaserServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
-    LaserTiltServo.write(aValue);
+    TiltServo.write(aValue);
 }
 #endif
 
@@ -111,8 +111,8 @@ void initHomePage(void) {
     SliderLaserPositionHorizontal.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
     SliderLaserPositionHorizontal.setValueUnitString("\xB0"); // \xB0 is degree character
 
-    LaserTiltServo.attach(LASER_SERVO_TILT_PIN);
-    LaserTiltServo.write(TILT_SERVO_MIN_VALUE);
+    TiltServo.attach(LASER_SERVO_TILT_PIN);
+    TiltServo.write(TILT_SERVO_MIN_VALUE);
 #endif
 }
 
@@ -127,10 +127,9 @@ void drawHomePage(void) {
         tCarTypeString[0] = '2';
     }
 
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, tCarTypeString, TEXT_SIZE_22,
-    COLOR_BLUE, COLOR_NO_BACKGROUND);
+    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, tCarTypeString);
     BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + (3 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT,
-            F(" Control"), TEXT_SIZE_22, COLOR_BLUE, COLOR_NO_BACKGROUND);
+            F(" Control"));
 
     TouchButtonRobotCarStartStop.drawButton();
     TouchButtonMelody.drawButton();
@@ -153,7 +152,7 @@ void drawHomePage(void) {
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
     SliderUSDistance.drawSlider();
-#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     SliderIRDistance.drawSlider();
 #  endif
 #endif

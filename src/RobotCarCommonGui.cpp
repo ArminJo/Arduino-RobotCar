@@ -21,6 +21,9 @@
 #include "RobotCar.h"
 #include "RobotCarGui.h"
 
+// a string buffer for BD info output
+char sStringBuffer[128];
+
 uint8_t sCurrentPage;
 BDButton TouchButtonBackSmall;
 BDButton TouchButtonBack;
@@ -37,8 +40,18 @@ uint16_t sLastSpeedSliderValue = 0;
 BDSlider SliderSpeedRight;
 BDSlider SliderSpeedLeft;
 
-// a string buffer for any purpose...
-char sStringBuffer[128];
+/*
+ * UltraSonic control GUI
+ */
+BDSlider SliderUSPosition;
+BDSlider SliderUSDistance;
+unsigned int sSliderUSLastCentimeter;
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+BDSlider SliderIRDistance;
+unsigned int sSliderIRLastCentimeter;
+#endif
+
+uint32_t sMillisOfNextVCCInfo = 0;
 
 void setupGUI(void) {
     initSerial(BLUETOOTH_BAUD_RATE);
@@ -78,14 +91,15 @@ void loopGUI(void) {
 
         // for all but PathInfo page
         if (sCurrentPage != PAGE_SHOW_PATH) {
-            /*
-             * Print changed tick values
-             */
-            if (EncoderMotor::DistanceTickCounterHasChanged) {
-                EncoderMotor::DistanceTickCounterHasChanged = false;
-                printDistanceValues();
+            if (sCurrentPage != PAGE_AUTOMATIC_CONTROL) {
+                /*
+                 * Print changed tick values
+                 */
+                if (EncoderMotor::DistanceTickCounterHasChanged) {
+                    EncoderMotor::DistanceTickCounterHasChanged = false;
+                    printDistanceValues();
+                }
             }
-
             readAndPrintVinPeriodically();
         }
     }
@@ -151,6 +165,10 @@ void doSpeedSlider(BDSlider * aTheTouchedSlider, uint16_t aValue) {
         sLastSpeedSliderValue = aValue;
         RobotCar.setSpeedCompensated(aValue);
     }
+}
+
+void doUSServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
+    DistanceServoWriteAndDelay(aValue);
 }
 
 /*
@@ -282,16 +300,63 @@ void initDisplay(void) {
     /*
      * Speed Sliders
      */
-    SliderSpeed.init(0, 10, BUTTON_WIDTH_6, SPEED_SLIDER_SIZE, 200, 0, COLOR_YELLOW,
-    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doSpeedSlider);
-    SliderSpeed.setScaleFactor(255.0 / SPEED_SLIDER_SIZE); // Slider is virtually 2 times larger, values were divided by 2
+    SliderSpeed.init(0, 10, BUTTON_WIDTH_6, SPEED_SLIDER_SIZE, 200, 0, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE, &doSpeedSlider);
+    SliderSpeed.setScaleFactor(255.0 / SPEED_SLIDER_SIZE); // Slider is virtually 2 times larger than displayed, values were divided by 2
 
     SliderSpeedLeft.init(BUTTON_WIDTH_6 + 4, 0, BUTTON_WIDTH_16, SPEED_SLIDER_SIZE / 2, SPEED_SLIDER_SIZE / 2 - 1, 0,
     SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderSpeedLeft.setValueFormatString("%3d"); // Since we also send values grater 100
 
     SliderSpeedRight.init(BUTTON_WIDTH_6 + 4 + BUTTON_WIDTH_16 + 8, 0, BUTTON_WIDTH_16, SPEED_SLIDER_SIZE / 2,
     SPEED_SLIDER_SIZE / 2 - 1, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderSpeedRight.setValueFormatString("%3d");
+
+    /*
+     * scaled (0 to 180) US Sliders
+     */
+    SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, 10, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
+    SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
+    SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
+    SliderUSPosition.setValueUnitString("\xB0"); // \xB0 is degree character
+
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+    /*
+     * Two thin sliders with captions and without cm units
+     */
+    SliderIRDistance.init((BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10) - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE,
+    DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
+    SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+    SliderIRDistance.setCaptionProperties(10, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
+    COLOR_WHITE);
+    SliderIRDistance.setCaption("IR");
+    // value below caption
+    SliderIRDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW,
+            4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
+
+    // Small US distance slider
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE,
+    DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderUSDistance.setCaptionProperties(10, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
+    COLOR_WHITE);
+    SliderUSDistance.setCaption("US");
+    // below caption
+    SliderUSDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW,
+            4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
+#else
+    // Big US distance slider
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, BUTTON_WIDTH_10, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
+    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+    SliderUSDistance.setValueUnitString("cm");
+#endif
+    SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
+    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
 
     initHomePage();
     initTestPage();
@@ -314,8 +379,7 @@ void drawCommonGui(void) {
  * returns true if voltage was printed
  */
 void readAndPrintVinPeriodically() {
-    static uint32_t sMillisOfNextVCCInfo = 0;
-    uint32_t tMillis = millis();
+        uint32_t tMillis = millis();
 
     if (tMillis >= sMillisOfNextVCCInfo) {
         sMillisOfNextVCCInfo = tMillis + PRINT_VOLTAGE_PERIOD_MILLIS;
@@ -348,14 +412,14 @@ void printMotorValues() {
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("max. %3d %3d"), leftEncoderMotor.MaxSpeed, rightEncoderMotor.MaxSpeed);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("comp. %2d  %2d"), leftEncoderMotor.SpeedCompensation, rightEncoderMotor.SpeedCompensation);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
     sprintf_P(sStringBuffer, PSTR("act. %3d %3d"), leftEncoderMotor.ActualSpeed, rightEncoderMotor.ActualSpeed);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 
 }
 
@@ -370,3 +434,22 @@ void printDistanceValues() {
             sCentimeterPerScanTimesTwo);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
 }
+
+
+void showUSDistance(unsigned int aCentimeter) {
+// feedback as slider length
+    if (aCentimeter != sSliderUSLastCentimeter) {
+        sSliderUSLastCentimeter = aCentimeter;
+        SliderUSDistance.setValueAndDrawBar(aCentimeter);
+    }
+}
+
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+void showIRDistance(unsigned int aCentimeter) {
+// feedback as slider length
+    if (aCentimeter != sSliderIRLastCentimeter) {
+        sSliderIRLastCentimeter = aCentimeter;
+        SliderIRDistance.setValueAndDrawBar(aCentimeter);
+    }
+}
+#endif

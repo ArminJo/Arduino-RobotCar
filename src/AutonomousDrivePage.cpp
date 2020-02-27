@@ -2,11 +2,13 @@
  * AutonomousDrivePage.cpp
  *
  *  Contains all the GUI elements for autonomous driving.
+ *  Cont ->Step / Step -> SStep, SStep->Cont: Switches mode from "continuous drive" to "drive until next turn" to "drive CENTIMETER_PER_RIDE_PRO"
+ *  Start Simple: Start simple driving algorithm (using the 2 "simple" functions in RobotCar.cpp)
+ *  Start Pro: Start elaborated driving algorithm
  *
  *  Needs BlueDisplay library.
  *
- *  Created on: 13.05.2019
- *  Copyright (C) 2016  Armin Joachimsmeyer
+ *  Copyright (C) 2019-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This program is distributed in the hope that it will be useful,
@@ -25,7 +27,7 @@ BDButton TouchButtonStepMode;
 BDButton TouchButtonStep;
 BDButton TouchButtonSingleScan;
 BDButton TouchButtonScanSpeed;
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 BDButton TouchButtonScanMode;
 #endif
 
@@ -34,10 +36,7 @@ BDButton TouchButtonBuiltInAutonomousDrive;
 
 uint8_t sStepMode = MODE_CONTINUOUS;
 bool sDoStep = false; // if true => do one step
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
-#define SCAN_MODE_BOTH  0
-#define SCAN_MODE_US    1
-#define SCAN_MODE_IR    2
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 uint8_t sScanMode = SCAN_MODE_BOTH;
 #endif
 
@@ -85,15 +84,24 @@ void doStep(BDButton * aTheTouchedButton, int16_t aValue) {
     }
 }
 
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 void setScanModeButtonCaption() {
     if (sScanMode == SCAN_MODE_BOTH) {
         TouchButtonScanMode.setCaption(F("Both->US"));
-    } else if (sScanMode == SCAN_MODE_US) {
+    } else if (sScanMode == SCAN_MODE_US)
+#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+    {
         TouchButtonScanMode.setCaption(F("US->IR"));
     } else {
         TouchButtonScanMode.setCaption(F("IR->Both"));
     }
+# else
+    {
+        TouchButtonScanMode.setCaption(F("US->ToF"));
+    } else {
+        TouchButtonScanMode.setCaption(F("ToF->Both"));
+    }
+#  endif
 }
 
 void doScanMode(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -105,7 +113,7 @@ void doScanMode(BDButton * aTheTouchedButton, int16_t aValue) {
     TouchButtonScanMode.drawButton();
 }
 
-#endif
+#endif // defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 
 void doChangeScanSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
     sDoSlowScan = aValue;
@@ -185,7 +193,7 @@ void initAutonomousDrivePage(void) {
             FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sDoSlowScan, &doChangeScanSpeed);
     TouchButtonScanSpeed.setCaptionForValueTrue("Scan fast");
 
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     TouchButtonScanMode.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
     BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_RED, "", TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doScanMode);
     setScanModeButtonCaption();
@@ -210,8 +218,7 @@ void initAutonomousDrivePage(void) {
 void drawAutonomousDrivePage(void) {
     drawCommonGui();
 
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Auto drive"), TEXT_SIZE_22,
-    COLOR_BLUE, COLOR_NO_BACKGROUND);
+    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Auto drive"));
 
     TouchButtonBackSmall.drawButton();
 
@@ -219,7 +226,7 @@ void drawAutonomousDrivePage(void) {
     TouchButtonSingleScan.drawButton();
     TouchButtonStep.drawButton();
 
-#ifdef CAR_HAS_IR_DISTANCE_SENSOR
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     TouchButtonScanMode.drawButton();
 #endif
     TouchButtonScanSpeed.drawButton();

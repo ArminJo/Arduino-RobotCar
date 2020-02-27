@@ -46,14 +46,21 @@ extern int sLastDecisionDegreesToTurnForDisplay;
 extern int sNextDegreesToTurn;
 extern int sLastDegreesTurned;
 
-extern Servo USDistanceServo;
+extern Servo DistanceServo;
 extern uint8_t sLastServoAngleInDegrees; // needed for optimized delay for servo repositioning
 
 extern uint8_t sCentimeterPerScanTimesTwo;
 extern uint8_t sCentimeterPerScan; // = sCentimeterPerScanTimesTwo / 2
 
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+#define SCAN_MODE_BOTH  0
+#define SCAN_MODE_US    1
+#define SCAN_MODE_IR    2
+extern uint8_t sScanMode;
+#endif
+
 void initUSServo();
-void US_ServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
+void DistanceServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
 
 /*
  * Values for included implementation
@@ -67,3 +74,5 @@ int doBuiltInCollisionDetection();
 void driveAutonomousOneStep(int (*aCollisionDetectionFunction)());
 
 #endif /* SRC_AUTONOMOUSDRIVE_H_ */
+
+#pragma once
