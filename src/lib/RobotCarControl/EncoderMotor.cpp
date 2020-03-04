@@ -24,7 +24,7 @@
 #include <Arduino.h>
 #include <EncoderMotor.h>
 
-#include "RobotCarGui.h"
+//#include "RobotCarGui.h"
 
 bool EncoderMotor::ValuesHaveChanged; // for printing
 bool EncoderMotor::EnableValuesPrint = true;
@@ -309,9 +309,6 @@ void EncoderMotor::calibrate() {
             tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
         }
 
-        printMotorValues();
-        printMotorDebugValues();
-
         if (endLoop) {
             break;
         }
@@ -471,7 +468,7 @@ void EncoderMotor::handleEncoderInterrupt() {
 /*
  * Enable both interrupts INT0/D2 or INT1/D3
  */
-void EncoderMotor::enableBothInterruptsOnBothEdges() {
+void EncoderMotor::enableINT0AndINT1Interrupts() {
 
 // interrupt on any logical change
     EICRA |= (1 << ISC00 | 1 << ISC10);

@@ -116,7 +116,7 @@ public:
      * Encoder interrupt handling
      */
     void handleEncoderInterrupt();
-    static void enableBothInterruptsOnBothEdges();
+    static void enableINT0AndINT1Interrupts();
     static void enableInterruptOnBothEdges(uint8_t aIntPinNumber);
 
     /*

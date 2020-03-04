@@ -23,8 +23,6 @@
 #include <CarMotorControl.h>
 #include <EncoderMotor.h>
 
-#include "RobotCarGui.h"
-
 EncoderMotor rightEncoderMotor;
 EncoderMotor leftEncoderMotor;
 
@@ -42,7 +40,7 @@ void CarMotorControl::init(uint8_t aPinFor2WDDetection) {
     /*
      * For slot type optocoupler interrupts on pin PD2 + PD3
      */
-    EncoderMotor::enableBothInterruptsOnBothEdges();
+    EncoderMotor::enableINT0AndINT1Interrupts();
 
     is2WDCar = !digitalRead(aPinFor2WDDetection);
     isDirectionForward = true;

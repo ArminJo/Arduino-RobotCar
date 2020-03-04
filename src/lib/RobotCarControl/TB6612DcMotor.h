@@ -23,7 +23,7 @@
 
 /*
  * Pins 9 + 10 are used for Servo library
- * 3 is used for encoder input
+ * 2 + 3 are used for encoder input
  */
 
 #define MOTOR_0_FORWARD_PIN 4

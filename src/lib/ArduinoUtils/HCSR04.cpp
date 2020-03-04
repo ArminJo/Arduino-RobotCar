@@ -7,10 +7,11 @@
  *  Supports 1 Pin mode as you get on the HY-SRF05 if you connect OUT to ground.
  *  You can modify the HC-SR04 modules to 1 Pin mode by:
  *  Old module with 3 16 pin chips: Connect Trigger and Echo direct or use a resistor < 4.7 kOhm.
- *        If you remove both 10 kOhm pullup resistor you can use a connecting resistor < 47 kOhm, but I suggest to use 10 kOhm which is more reliable.
+ *        If you remove both 10 kOhm pullup resistors you can use a connecting resistor < 47 kOhm, but I suggest to use 10 kOhm which is more reliable.
  *  Old module with 3 16 pin chips but with no pullup resistors near the connector row: Connect Trigger and Echo with a resistor > 200 Ohm. Use 10 kOhm.
  *  New module with 1 16 pin and 2 8 pin chips: Connect Trigger and Echo by a resistor > 200 Ohm and < 22 kOhm.
  *  All modules: Connect Trigger and Echo by a resistor of 4.7 kOhm.
+ *  Some old HY-SRF05 modules of mine cannot be converted, since the output signal going low triggers the next measurement.
  *
  *  Copyright (C) 2018-2020  Armin Joachimsmeyer
  *  Email: armin.joachimsmeyer@gmail.com
@@ -100,11 +101,21 @@ unsigned int getUSDistance(unsigned int aTimeoutMicros) {
     /*
      * Get echo length.
      * Speed of sound is: 331.5 + (0.6 * TemperatureCelsius).
-     * Exact value at 20 degree is 343,46 m/s => 58,23 us per centimeter and 17,17 cm/ms (forth and back)
-     * Exact value at 10 degree is 337,54 m/s => 59,25 us per centimeter and 16,877 cm/ms (forth and back)
-     * At 20 degree => 50cm gives 2914 us, 2m gives 11655 us
+     * Exact value at 20 degree celsius is 343,46 m/s => 58,23 us per centimeter and 17,17 cm/ms (forth and back)
+     * Exact value at 10 degree celsius is 337,54 m/s => 59,25 us per centimeter and 16,877 cm/ms (forth and back)
+     * At 20 degree celsius => 50cm gives 2914 us, 2m gives 11655 us
+     *
+     * Use pulseInLong, this uses micros() as counter, relying on interrupts being enabled, which is not disturbed by (e.g. the 1 ms timer) interrupts.
+     * Only thing is that the pulse ends when we are in an interrupt routine, thus prolonging the measured pulse duration.
+     * Alternatively we can use pulseIn() in a noInterrupts() context, but this will effectively stop the millis() timer for duration of pulse / or timeout.
      */
+#if defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny87__) || defined(__AVR_ATtiny167__)
+    noInterrupts();
+    unsigned long tUSPulseMicros = pulseIn(tEchoInPin, HIGH, aTimeoutMicros);
+    interrupts();
+#else
     unsigned long tUSPulseMicros = pulseInLong(tEchoInPin, HIGH, aTimeoutMicros);
+#endif
     if (tUSPulseMicros == 0) {
 // timeout happened -> change value to timeout value. This eases comparison with different distances.
         tUSPulseMicros = aTimeoutMicros;

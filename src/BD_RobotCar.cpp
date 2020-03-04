@@ -111,7 +111,7 @@ void setup() {
     /*
      * For slot type optocoupler interrupts on pin PD2 + PD3
      */
-    EncoderMotor::enableBothInterruptsOnBothEdges();
+    EncoderMotor::enableINT0AndINT1Interrupts();
     EncoderMotor::EnableValuesPrint = true;
     // initialize motors
     RobotCar.init(TWO_WD_DETECTION_PIN);
@@ -128,7 +128,9 @@ void setup() {
 
     readVINVoltage();
     randomSeed(sVINVoltage * 10000);
+#ifndef USE_TB6612_BREAKOUT_BOARD
     tone(SPEAKER_PIN, 2200, 100);
+#endif
 }
 
 void loop() {

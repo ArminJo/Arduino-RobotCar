@@ -50,7 +50,7 @@ void setup() {
     /*
      * For slot type optocoupler interrupts on pin PD2 + PD3
      */
-    EncoderMotor::enableBothInterruptsOnBothEdges();
+    EncoderMotor::enableINT0AndINT1Interrupts();
     EncoderMotor::EnableValuesPrint = true;
 
 // initialize motors

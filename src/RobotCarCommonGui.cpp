@@ -151,6 +151,8 @@ void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aValue) {
 
 void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue) {
     EncoderMotor::calibrate();
+    printMotorValues();
+    printMotorDebugValues();
 }
 
 /*
