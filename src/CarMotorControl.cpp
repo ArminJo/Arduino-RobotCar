@@ -20,8 +20,8 @@
  */
 
 #include <Arduino.h>
-#include <CarMotorControl.h>
-#include <EncoderMotor.h>
+#include "CarMotorControl.h"
+#include "EncoderMotor.h"
 
 EncoderMotor rightEncoderMotor;
 EncoderMotor leftEncoderMotor;
@@ -43,29 +43,52 @@ void CarMotorControl::init(uint8_t aPinFor2WDDetection) {
     EncoderMotor::enableINT0AndINT1Interrupts();
 
     is2WDCar = !digitalRead(aPinFor2WDDetection);
-    isDirectionForward = true;
 }
 
-void CarMotorControl::setSpeedCompensated(uint8_t aSpeed) {
-    rightEncoderMotor.setSpeedCompensated(aSpeed);
-    leftEncoderMotor.setSpeedCompensated(aSpeed);
+/*
+ * Sets default values for min and max speed and reset compensation
+ */
+void CarMotorControl::setDefaultsForFixedDistanceDriving() {
+    rightEncoderMotor.setEepromValuesDefaults();
+    leftEncoderMotor.setEepromValuesDefaults();
 }
 
-void CarMotorControl::activateMotors() {
-    rightEncoderMotor.activate();
-    leftEncoderMotor.activate();
+/*
+ *  Direct motor control, no state or flag handling
+ */
+void CarMotorControl::setSpeed(int aRequestedSpeed) {
+    rightEncoderMotor.setSpeed(aRequestedSpeed);
+    leftEncoderMotor.setSpeed(aRequestedSpeed);
+}
+
+/*
+ * Sets speed adjusted by current compensation value and handle motor state and flags
+ */
+void CarMotorControl::setSpeedCompensated(int aRequestedSpeed) {
+    rightEncoderMotor.setSpeedCompensated(aRequestedSpeed);
+    leftEncoderMotor.setSpeedCompensated(aRequestedSpeed);
 }
 
 /*
  * Stop car
  */
-void CarMotorControl::shutdownMotors(bool doBrake) {
-    rightEncoderMotor.shutdownMotor(doBrake);
-    leftEncoderMotor.shutdownMotor(doBrake);
+void CarMotorControl::stopMotors(uint8_t aStopMode) {
+    rightEncoderMotor.stopMotor(aStopMode);
+    leftEncoderMotor.stopMotor(aStopMode);
+}
+
+/*
+ * Stop car and reset all control values as speed, distances, debug values to 0x00
+ * Leave calibration and compensation (EEPROM) values unaffected.
+ */
+void CarMotorControl::stopMotorsAndReset() {
+    rightEncoderMotor.stopMotorAndReset();
+    leftEncoderMotor.stopMotorAndReset();
 }
 
 /*
  * If motor is accelerating or decelerating then updateMotor needs to be called at a fast rate otherwise it will not work correctly
+ * Used to suppress time consuming display of motor values
  */
 bool CarMotorControl::needsFastUpdates() {
     return (rightEncoderMotor.State == MOTOR_STATE_RAMP_DOWN || rightEncoderMotor.State == MOTOR_STATE_RAMP_UP
@@ -78,26 +101,7 @@ void CarMotorControl::updateMotors() {
 }
 
 /*
- * Stop car and reset all control values as speed, distances, debug values to 0x00
- * Leave calibration and compensation values unaffected.
- */
-void CarMotorControl::resetAndShutdownMotors() {
-    rightEncoderMotor.resetAndShutdown();
-    leftEncoderMotor.resetAndShutdown();
-    isDirectionForward = true;
-}
-
-/*
- * This stops motors
- */
-void CarMotorControl::setDirection(bool goForward) {
-    isDirectionForward = goForward;
-    rightEncoderMotor.setDirection(goForward);
-    leftEncoderMotor.setDirection(goForward);
-}
-
-/*
- * initialize motorInfo fields DirectionForward, ActualMaxSpeed, DistanceTickCounter and optional NextChangeMaxTargetCount.
+ * initialize motorInfo fields DirectionForward, CurrentMaxSpeed, DistanceTickCounter and optional NextChangeMaxTargetCount.
  */
 void CarMotorControl::initGoDistanceCentimeter(int aDistanceCentimeter) {
     rightEncoderMotor.initGoDistanceCount(aDistanceCentimeter * FACTOR_CENTIMETER_TO_COUNT);
@@ -117,8 +121,12 @@ void CarMotorControl::goDistanceCentimeter(int aDistanceCentimeter, void (*aLoop
 /*
  * Start motor for "infinite" distance and then blocking wait until both motors are at full speed
  */
-void CarMotorControl::startAndWaitForFullSpeed() {
-    initGoDistanceCentimeter(3200);
+void CarMotorControl::startCarAndWaitForFullSpeed(uint8_t aDriveDirection) {
+    if (aDriveDirection == DIRECTION_FORWARD) {
+        initGoDistanceCentimeter(INFINITE_DISTANCE_CM);
+    } else {
+        initGoDistanceCentimeter(-INFINITE_DISTANCE_CM);
+    }
     /*
      * blocking wait for start
      */
@@ -128,24 +136,31 @@ void CarMotorControl::startAndWaitForFullSpeed() {
     } while (rightEncoderMotor.State != MOTOR_STATE_FULL_SPEED || leftEncoderMotor.State != MOTOR_STATE_FULL_SPEED);
 }
 
-
 /*
+ * Stop car with ramp and give DistanceCountAfterRampUp counts for braking.
+ *
  * Set NextChangeMaxTargetCount to change state from MOTOR_STATE_FULL_SPEED to MOTOR_STATE_RAMP_DOWN
  * Use DistanceCountAfterRampUp as ramp down count
  * Blocking wait for stop
  */
-void CarMotorControl::stopCar() {
+void CarMotorControl::stopCarAndWaitForIt() {
     if (isStopped()) {
         return;
     }
-    rightEncoderMotor.NextChangeMaxTargetCount = rightEncoderMotor.DistanceCount;
-    rightEncoderMotor.TargetDistanceCount = rightEncoderMotor.DistanceCount + rightEncoderMotor.DistanceCountAfterRampUp;
-    leftEncoderMotor.NextChangeMaxTargetCount = leftEncoderMotor.DistanceCount;
-    leftEncoderMotor.TargetDistanceCount = leftEncoderMotor.DistanceCount + leftEncoderMotor.DistanceCountAfterRampUp;
+    rightEncoderMotor.NextChangeMaxTargetCount = rightEncoderMotor.EncoderCount;
+    rightEncoderMotor.TargetDistanceCount = rightEncoderMotor.EncoderCount + rightEncoderMotor.DistanceCountAfterRampUp;
+    leftEncoderMotor.NextChangeMaxTargetCount = leftEncoderMotor.EncoderCount;
+    leftEncoderMotor.TargetDistanceCount = leftEncoderMotor.EncoderCount + leftEncoderMotor.DistanceCountAfterRampUp;
 
     /*
      * blocking wait for stop
      */
+    waitUntilCarStopped();
+}
+/**
+ * Blocking version of wait
+ */
+void CarMotorControl::waitUntilCarStopped() {
     do {
         rightEncoderMotor.updateMotor();
         leftEncoderMotor.updateMotor();
@@ -162,16 +177,6 @@ void CarMotorControl::waitUntilCarStopped(void (*aLoopCallback)(void)) {
         if (aLoopCallback != NULL) {
             aLoopCallback();
         }
-    } while (!isStopped());
-}
-
-/**
- * Blocking version of wait
- */
-void CarMotorControl::waitUntilCarStopped() {
-    do {
-        rightEncoderMotor.updateMotor();
-        leftEncoderMotor.updateMotor();
     } while (!isStopped());
 }
 
@@ -235,13 +240,13 @@ void CarMotorControl::initRotateCar(int16_t aRotationDegrees, uint8_t aTurnDirec
         tDistanceCountLeft = -tDistanceCountTemp;
 
     }
-    // This in turn sets ActualMaxSpeed to MaxSpeed.
+    // This in turn sets CurrentMaxSpeed to MaxSpeed.
     rightEncoderMotor.initGoDistanceCount(tDistanceCountRight);
     leftEncoderMotor.initGoDistanceCount(tDistanceCountLeft);
     if (aUseSlowSpeed) {
         // adjust MaxSpeed
-        rightEncoderMotor.ActualMaxSpeed = rightEncoderMotor.MinSpeed + rightEncoderMotor.MinSpeed / 2;
-        leftEncoderMotor.ActualMaxSpeed = leftEncoderMotor.MinSpeed + leftEncoderMotor.MinSpeed / 2;
+        rightEncoderMotor.CurrentMaxSpeed = rightEncoderMotor.MinSpeed + rightEncoderMotor.MinSpeed / 2;
+        leftEncoderMotor.CurrentMaxSpeed = leftEncoderMotor.MinSpeed + leftEncoderMotor.MinSpeed / 2;
     }
 }
 

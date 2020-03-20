@@ -5,7 +5,7 @@
  *
  *  insertToPath() and DrawPath() to show the path we were driving.
  *
- *  Needs BlueDisplay library.
+ *  Requires BlueDisplay library.
  *
  *  Created on: 13.05.2019
  *  Copyright (C) 2016  Armin Joachimsmeyer

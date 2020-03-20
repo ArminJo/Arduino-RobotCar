@@ -3,10 +3,10 @@
  *
  *  Contains all the GUI elements for autonomous driving.
  *  Cont ->Step / Step -> SStep, SStep->Cont: Switches mode from "continuous drive" to "drive until next turn" to "drive CENTIMETER_PER_RIDE_PRO"
- *  Start Simple: Start simple driving algorithm (using the 2 "simple" functions in RobotCar.cpp)
+ *  Start Simple: Start simple driving algorithm (using the 2 "simple" functions in RobotCarMotorControl.cpp)
  *  Start Pro: Start elaborated driving algorithm
  *
- *  Needs BlueDisplay library.
+ *  Requires BlueDisplay library.
  *
  *  Copyright (C) 2019-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
@@ -51,7 +51,7 @@ void setStepModeButtonCaption();
  */
 void setStepMode(uint8_t aStepMode) {
     if (aStepMode == MODE_SINGLE_STEP) {
-        RobotCar.stopCar();
+        RobotCarMotorControl.stopCarAndWaitForIt();
     } else if (aStepMode > MODE_SINGLE_STEP) {
         aStepMode = MODE_CONTINUOUS;
     }
@@ -79,7 +79,7 @@ void doStep(BDButton * aTheTouchedButton, int16_t aValue) {
     /*
      * Start if not yet done
      */
-    if (!sRobotCarStarted) {
+    if (!sRobotCarMoving) {
         startStopAutomomousDrive(true, sUseBuiltInAutonomousDriveStrategy);
     }
 }

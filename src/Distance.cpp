@@ -19,13 +19,23 @@
 #include "RobotCar.h"
 #include "RobotCarGui.h"
 
-#include <HCSR04.h>
+#include "HCSR04.h"
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
 SFEVL53L1X sToFDistanceSensor;
 #endif
 
+/*
+ * This initializes the pins too
+ */
 void initDistance() {
+#ifdef USE_US_SENSOR_1_PIN_MODE
+    initUSDistancePin(PIN_TRIGGER_OUT);
+#else
+    initUSDistancePins(PIN_TRIGGER_OUT, PIN_ECHO_IN);
+#endif
+    initDistanceServo();
+
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
     if (sToFDistanceSensor.begin() != 0) { //Begin returns 0 on a good init
         BlueDisplay1.debug("ToF sensor connect failed!");
@@ -46,7 +56,7 @@ void initDistance() {
 
 void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
     // Do not show distanced during (time critical) acceleration or deceleration
-    if (!RobotCar.needsFastUpdates()) {
+    if (!RobotCarMotorControl.needsFastUpdates()) {
         static long sLastUSMeasurementMillis;
         long tMillis = millis();
         if (sLastUSMeasurementMillis + aPeriodMillis < tMillis) {
@@ -65,7 +75,7 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
 
 #ifdef CAR_HAS_IR_DISTANCE_SENSOR
 uint8_t getIRDistanceAsCentimeter() {
-    float tVolt = analogRead(IR_DISTANCE_SENSOR_PIN);
+    float tVolt = analogRead(PIN_IR_DISTANCE_SENSOR);
     // * 0.004887585 for 1023 = 5V
     // Model 1080
     return (29.988 * pow(tVolt * 0.004887585, -1.173)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp

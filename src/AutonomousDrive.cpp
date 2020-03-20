@@ -43,8 +43,8 @@ uint8_t sTurnMode = TURN_IN_PLACE;
 uint8_t sCentimeterPerScanTimesTwo = CENTIMETER_PER_RIDE * 2; // = encoder counts per scan
 uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE;
 
-void initUSServo() {
-    DistanceServo.attach(DISTANCE_SERVO_PIN);
+void initDistanceServo() {
+    DistanceServo.attach(PIN_DISTANCE_SERVO);
     DistanceServoWriteAndDelay(90);
 }
 
@@ -201,7 +201,7 @@ void __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, boo
             /*
              * Emergency stop
              */
-            RobotCar.stopCar();
+            RobotCarMotorControl.stopCarAndWaitForIt();
         }
 
         if (aShowValues) {
@@ -590,7 +590,7 @@ void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
      * 1. Check for step conditions if step should happen
      */
     if (sStepMode == MODE_CONTINUOUS || (sStepMode == MODE_SINGLE_STEP && sDoStep)
-            || (sStepMode == MODE_STEP_TO_NEXT_TURN && (!RobotCar.isStopped() || sDoStep))) {
+            || (sStepMode == MODE_STEP_TO_NEXT_TURN && (!RobotCarMotorControl.isStopped() || sDoStep))) {
         /*
          * Do one step
          */
@@ -607,34 +607,34 @@ void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
              * Do not turn after movement to enable analysis of turn decision
              */
             if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
-                RobotCar.goDistanceCentimeter(-10, &loopGUI);
+                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
             } else {
-                RobotCar.rotateCar(sNextDegreesToTurn, sTurnMode);
+                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
                 // wait to really stop after turning
                 delay(100);
                 sLastDegreesTurned = sNextDegreesToTurn;
                 sNextDegreesToTurn = 0;
                 // and go
-                RobotCar.goDistanceCentimeter(CENTIMETER_PER_RIDE, &loopGUI);
+                RobotCarMotorControl.goDistanceCentimeter(CENTIMETER_PER_RIDE, &loopGUI);
             }
         } else
         /*
          * Step of MODE_STEP_TO_NEXT_TURN or start of MODE_CONTINUOUS
          * Rotate / go backwards and start
          */
-        if (RobotCar.isStopped()) {
+        if (RobotCarMotorControl.isStopped()) {
             if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
                 // go backwards
-                RobotCar.goDistanceCentimeter(-10, &loopGUI);
+                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
             } else {
                 // rotate
-                RobotCar.rotateCar(sNextDegreesToTurn, sTurnMode);
+                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
                 // wait to really stop after turning
                 delay(100);
                 sLastDegreesTurned = sNextDegreesToTurn;
                 sNextDegreesToTurn = 0;
                 // and go
-                RobotCar.startAndWaitForFullSpeed();
+                RobotCarMotorControl.startCarAndWaitForFullSpeed();
                 tMovementJustStarted = true;
             }
         }
@@ -643,7 +643,7 @@ void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
          * Here car is moving
          */
 
-        uint16_t tStepStartDistanceCount = rightEncoderMotor.DistanceCount;
+        uint16_t tStepStartDistanceCount = rightEncoderMotor.EncoderCount;
 
         bool tCurrentPageIsAutomaticControl = (sCurrentPage == PAGE_AUTOMATIC_CONTROL);
 
@@ -664,11 +664,11 @@ void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
         /*
          * compute distance driven for one US scan
          */
-        if (!RobotCar.isStopped()) {
+        if (!RobotCarMotorControl.isStopped()) {
             /*
              * No stop here => distance is valid
              */
-            sCentimeterPerScanTimesTwo = rightEncoderMotor.DistanceCount - tStepStartDistanceCount;
+            sCentimeterPerScanTimesTwo = rightEncoderMotor.EncoderCount - tStepStartDistanceCount;
             sCentimeterPerScan = sCentimeterPerScanTimesTwo / 2;
             if (tCurrentPageIsAutomaticControl) {
                 char tStringBuffer[6];
@@ -685,18 +685,18 @@ void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
             /*
              * Stop if rotation requested or single step => insert / update last ride in path
              */
-            RobotCar.stopCar();
+            RobotCarMotorControl.stopCarAndWaitForIt();
             if (sStepMode == MODE_SINGLE_STEP) {
                 insertToPath(CENTIMETER_PER_RIDE * 2, sLastDegreesTurned, true);
             } else {
                 // add last driven distance to path
-                insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
+                insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
             }
         } else {
             /*
              * No stop, just continue => overwrite last path element with current riding distance and try to synchronize motors
              */
-            insertToPath(rightEncoderMotor.DistanceCount, sLastDegreesTurned, false);
+            insertToPath(rightEncoderMotor.EncoderCount, sLastDegreesTurned, false);
             rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
         }
 

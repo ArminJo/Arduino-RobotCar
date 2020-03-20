@@ -2,11 +2,13 @@
  * EncoderMotor.cpp
  *
  *  Functions for controlling a DC-motor which rotary encoder attached.
- *  Generates ramps for acceleration and deceleration and tries to stop at target distance.
- *  This enables deterministic turns for 2-Wheel Cars.
- *  For 4-Wheel cars it is impossible go get deterministic turns, therefore I use approximated thumb values.
  *
- *  Needs Adafruit_MotorShield.cpp or TB6612 breakout board
+ *  Contains functions to go a specified distance.
+ *  These functions generates ramps for acceleration and deceleration and tries to stop at target distance.
+ *  This enables deterministic turns for 2-Wheel Cars.  For 4-Wheel cars it is impossible
+ *  to get deterministic turns, therefore I use approximated thumb values.
+ *
+ *  Tested for Adafruit Motor Shield and plain TB6612 breakout board.
  *
  *  Created on: 16.09.2016
  *  Copyright (C) 2016  Armin Joachimsmeyer
@@ -22,13 +24,12 @@
  */
 
 #include <Arduino.h>
-#include <EncoderMotor.h>
+#include "EncoderMotor.h"
 
 //#include "RobotCarGui.h"
 
 bool EncoderMotor::ValuesHaveChanged; // for printing
-bool EncoderMotor::EnableValuesPrint = true;
-volatile bool EncoderMotor::DistanceTickCounterHasChanged;
+volatile bool EncoderMotor::EncoderTickCounterHasChanged;
 
 /*
  * The list version saves 100 bytes and is more flexible, compared with the array version
@@ -62,8 +63,42 @@ EncoderMotor::EncoderMotor() : // @suppress("Class members should be properly in
 void EncoderMotor::init(uint8_t aMotorNumber) {
     TB6612DcMotor::init(aMotorNumber);  // create with the default frequency 1.6KHz
     // stop motor
-    resetAndShutdown();
+    stopMotorAndReset();
     readEeprom();
+}
+
+/*
+ * if aDistanceCount < 0 then use DIRECTION_BACKWARD
+ */
+void EncoderMotor::initGoDistanceCount(int aDistanceCount) {
+
+    CurrentDirection = DIRECTION_FORWARD;
+    if (aDistanceCount < 0) {
+        aDistanceCount = -aDistanceCount;
+        CurrentDirection = DIRECTION_BACKWARD;
+    }
+
+    if (State == MOTOR_STATE_STOPPED) {
+        CurrentMaxSpeed = MaxSpeed - SpeedCompensation;
+        /*
+         * Start the motor and compensate for last distance delta
+         */
+        // Positive if driven too far
+        int8_t tLastDelta = (int) EncoderCount - (int) LastTargetDistanceCount;
+        if (abs(tLastDelta) <= MAX_DISTANCE_DELTA && aDistanceCount >= tLastDelta) {
+            TargetDistanceCount = aDistanceCount - tLastDelta;
+        } else {
+            TargetDistanceCount = aDistanceCount;
+        }
+        EncoderCount = 0;
+    } else {
+        /*
+         * Increase the distance to go for running motor
+         */
+        TargetDistanceCount += aDistanceCount;
+        NextChangeMaxTargetCount += aDistanceCount;
+    }
+    LastTargetDistanceCount = TargetDistanceCount;
 }
 
 void EncoderMotor::updateMotor() {
@@ -73,23 +108,18 @@ void EncoderMotor::updateMotor() {
         if (TargetDistanceCount > 0) {
             //  --> RAMP_UP
             State = MOTOR_STATE_RAMP_UP;
-            LastRideDistanceCount = 0;
+            LastRideEncoderCount = 0;
             /*
              * Start motor
              */
-            if (isDirectionForward) {
-                run(FORWARD);
-            } else {
-                run(BACKWARD);
-            }
             NextRampChangeMillis = tMillis + RAMP_UP_UPDATE_INTERVAL_MILLIS;
-            ActualSpeed = MinSpeed;
+            CurrentSpeed = MinSpeed;
             // not really needed here since output is disabled during ramps
             ValuesHaveChanged = true;
 
             NextChangeMaxTargetCount = TargetDistanceCount / 2;
             // initialize for timeout detection
-            DistanceTickLastMillis = tMillis - ENCODER_SENSOR_MASK_MILLIS - 1;
+            EncoderTickLastMillis = tMillis - ENCODER_SENSOR_MASK_MILLIS - 1;
 
             RampDelta = RAMP_UP_VALUE_DELTA;
             if (RampDelta < 2) {
@@ -98,7 +128,7 @@ void EncoderMotor::updateMotor() {
             DebugCount = 0;
             Debug = 0;
 
-            setSpeed(ActualSpeed);
+            TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
         }
 
     } else if (State == MOTOR_STATE_RAMP_UP) {
@@ -107,10 +137,10 @@ void EncoderMotor::updateMotor() {
          */
         if (tMillis >= NextRampChangeMillis) {
             NextRampChangeMillis += RAMP_UP_UPDATE_INTERVAL_MILLIS;
-            ActualSpeed += RampDelta;
+            CurrentSpeed += RampDelta;
             // Clip value and check for 8 bit overflow
-            if (ActualSpeed > ActualMaxSpeed || ActualSpeed <= RampDelta) {
-                ActualSpeed = ActualMaxSpeed;
+            if (CurrentSpeed > CurrentMaxSpeed || CurrentSpeed <= RampDelta) {
+                CurrentSpeed = CurrentMaxSpeed;
             }
             ValuesHaveChanged = true;
 
@@ -118,11 +148,11 @@ void EncoderMotor::updateMotor() {
              * Transition criteria is:
              * Max Speed reached or more than half of distance is done
              */
-            if (ActualSpeed == ActualMaxSpeed || DistanceCount >= NextChangeMaxTargetCount) {
+            if (CurrentSpeed == CurrentMaxSpeed || EncoderCount >= NextChangeMaxTargetCount) {
                 //  --> FULL_SPEED
                 State = MOTOR_STATE_FULL_SPEED;
 
-                DistanceCountAfterRampUp = DistanceCount;
+                DistanceCountAfterRampUp = EncoderCount;
                 uint8_t tDistanceCountForRampDown = DistanceCountAfterRampUp;
                 // guarantee minimal ramp down length
                 if (tDistanceCountForRampDown < 3 && TargetDistanceCount > 6) {
@@ -130,7 +160,7 @@ void EncoderMotor::updateMotor() {
                 }
                 NextChangeMaxTargetCount = TargetDistanceCount - tDistanceCountForRampDown;
             }
-            setSpeed(ActualSpeed);
+            TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
         }
     }
 
@@ -139,22 +169,22 @@ void EncoderMotor::updateMotor() {
         /*
          * Wait until ramp down count is reached
          */
-        if (DistanceCount >= NextChangeMaxTargetCount) {
+        if (EncoderCount >= NextChangeMaxTargetCount) {
             NextChangeMaxTargetCount++;
             //  --> RAMP_DOWN
             State = MOTOR_STATE_RAMP_DOWN;
             /*
              * Ramp to reach MinSpeed after 1/2 of remaining distance
              */
-            RampDeltaPerDistanceCount = ((ActualSpeed - StopSpeed) * 2) / ((TargetDistanceCount - DistanceCount)) + 1;
+            RampDeltaPerDistanceCount = ((CurrentSpeed - StopSpeed) * 2) / ((TargetDistanceCount - EncoderCount)) + 1;
             // brake
-            if (ActualSpeed > RampDeltaPerDistanceCount) {
-                ActualSpeed -= RampDeltaPerDistanceCount;
+            if (CurrentSpeed > RampDeltaPerDistanceCount) {
+                CurrentSpeed -= RampDeltaPerDistanceCount;
             } else {
-                ActualSpeed = StopSpeed;
+                CurrentSpeed = StopSpeed;
             }
             ValuesHaveChanged = true;
-            setSpeed(ActualSpeed);
+            TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
         }
 
     } else if (State == MOTOR_STATE_RAMP_DOWN) {
@@ -163,17 +193,17 @@ void EncoderMotor::updateMotor() {
         /*
          * Decrease motor speed depending on distance to target count
          */
-        if (DistanceCount >= NextChangeMaxTargetCount) {
+        if (EncoderCount >= NextChangeMaxTargetCount) {
             Debug++;
             NextChangeMaxTargetCount++;
-            if (ActualSpeed > RampDeltaPerDistanceCount) {
-                ActualSpeed -= RampDeltaPerDistanceCount;
+            if (CurrentSpeed > RampDeltaPerDistanceCount) {
+                CurrentSpeed -= RampDeltaPerDistanceCount;
             } else {
-                ActualSpeed = StopSpeed;
+                CurrentSpeed = StopSpeed;
             }
             // safety net for slow speed
-            if (ActualSpeed < StopSpeed) {
-                ActualSpeed = StopSpeed;
+            if (CurrentSpeed < StopSpeed) {
+                CurrentSpeed = StopSpeed;
             }
             // not really needed here since output is disabled during ramps
             ValuesHaveChanged = true;
@@ -181,20 +211,20 @@ void EncoderMotor::updateMotor() {
         /*
          * Check if target count is reached
          */
-        if (DistanceCount >= TargetDistanceCount) {
-            SpeedAtTargetCountReached = ActualSpeed;
-            shutdownMotor(true);
+        if (EncoderCount >= TargetDistanceCount) {
+            SpeedAtTargetCountReached = CurrentSpeed;
+            stopMotor(MOTOR_BRAKE);
         } else {
-            setSpeed(ActualSpeed);
+            TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
         }
     }
 
     /*
      * Check for timeout
      */
-    if (State != MOTOR_STATE_STOPPED && tMillis > (DistanceTickLastMillis + RAMP_DOWN_TIMEOUT_MILLIS)) {
-        SpeedAtTargetCountReached = ActualSpeed;
-        shutdownMotor(true);
+    if (State != MOTOR_STATE_STOPPED && tMillis > (EncoderTickLastMillis + RAMP_DOWN_TIMEOUT_MILLIS)) {
+        SpeedAtTargetCountReached = CurrentSpeed;
+        stopMotor(MOTOR_BRAKE);
     }
 }
 
@@ -207,48 +237,48 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
     if (tMillis >= sNextMotorSyncMillis) {
         sNextMotorSyncMillis += aCheckInterval;
         // only synchronize if manually operated or at full speed
-        if ((State == MOTOR_STATE_STOPPED && aOtherMotorControl->State == MOTOR_STATE_STOPPED && ActualSpeed > 0)
+        if ((State == MOTOR_STATE_STOPPED && aOtherMotorControl->State == MOTOR_STATE_STOPPED && CurrentSpeed > 0)
                 || (State == MOTOR_STATE_FULL_SPEED && aOtherMotorControl->State == MOTOR_STATE_FULL_SPEED)) {
 
             ValuesHaveChanged = false;
-            if (DistanceCount >= (aOtherMotorControl->DistanceCount + 2)) {
-                DistanceCount = aOtherMotorControl->DistanceCount;
+            if (EncoderCount >= (aOtherMotorControl->EncoderCount + 2)) {
+                EncoderCount = aOtherMotorControl->EncoderCount;
                 /*
                  * This motor is too fast, first try to reduce other motors compensation
                  */
                 if (aOtherMotorControl->SpeedCompensation >= 2) {
                     aOtherMotorControl->SpeedCompensation -= 2;
-                    aOtherMotorControl->ActualSpeed += 2;
-                    aOtherMotorControl->setSpeed(aOtherMotorControl->ActualSpeed);
+                    aOtherMotorControl->CurrentSpeed += 2;
+                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed);
                     ValuesHaveChanged = true;
-                    DistanceCount = aOtherMotorControl->DistanceCount;
-                } else if (ActualSpeed > MinSpeed) {
+                    EncoderCount = aOtherMotorControl->EncoderCount;
+                } else if (CurrentSpeed > MinSpeed) {
                     /*
                      * else increase this motors compensation
                      */
                     SpeedCompensation += 2;
-                    ActualSpeed -= 2;
-                    setSpeed(ActualSpeed);
+                    CurrentSpeed -= 2;
+                    TB6612DcMotor::setSpeed(CurrentSpeed);
                     ValuesHaveChanged = true;
                 }
 
-            } else if (aOtherMotorControl->DistanceCount >= (DistanceCount + 2)) {
-                aOtherMotorControl->DistanceCount = DistanceCount;
+            } else if (aOtherMotorControl->EncoderCount >= (EncoderCount + 2)) {
+                aOtherMotorControl->EncoderCount = EncoderCount;
                 /*
                  * Other motor is too fast, first try to reduce this motors compensation
                  */
                 if (SpeedCompensation >= 2) {
                     SpeedCompensation -= 2;
-                    ActualSpeed += 2;
-                    setSpeed(ActualSpeed);
+                    CurrentSpeed += 2;
+                    TB6612DcMotor::setSpeed(CurrentSpeed);
                     ValuesHaveChanged = true;
-                } else if (aOtherMotorControl->ActualSpeed > aOtherMotorControl->MinSpeed) {
+                } else if (aOtherMotorControl->CurrentSpeed > aOtherMotorControl->MinSpeed) {
                     /*
                      * else increase other motors compensation
                      */
                     aOtherMotorControl->SpeedCompensation += 2;
-                    aOtherMotorControl->ActualSpeed -= 2;
-                    aOtherMotorControl->setSpeed(aOtherMotorControl->ActualSpeed);
+                    aOtherMotorControl->CurrentSpeed -= 2;
+                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed);
                     ValuesHaveChanged = true;
                 }
             }
@@ -264,7 +294,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
  * generates a rising ramp and detects the first movement -> this sets dead band / minimum Speed
  */
 void EncoderMotor::calibrate() {
-    resetAndStopAllMotors();
+    stopAllMotorsAndreset();
     bool endLoop;
     EncoderMotor * tEncoderMotorControlPointer;
     tEncoderMotorControlPointer = sMotorControlListStart;
@@ -273,7 +303,6 @@ void EncoderMotor::calibrate() {
         tEncoderMotorControlPointer->MinSpeed = 0;
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
-    setDirectionForAll(true);
 
     /*
      * increase motor speed by 1 until motor moves
@@ -284,7 +313,7 @@ void EncoderMotor::calibrate() {
         while (tEncoderMotorControlPointer != NULL) {
             if (tEncoderMotorControlPointer->MinSpeed == 0) {
                 tEncoderMotorControlPointer->setSpeed(tSpeed);
-                tEncoderMotorControlPointer->ActualSpeed = tSpeed;
+                tEncoderMotorControlPointer->CurrentSpeed = tSpeed;
             }
             tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
         }
@@ -298,7 +327,7 @@ void EncoderMotor::calibrate() {
             /*
              * Store speed after 6 counts (3cm)
              */
-            if (tEncoderMotorControlPointer->MinSpeed == 0 && tEncoderMotorControlPointer->DistanceCount > 6) {
+            if (tEncoderMotorControlPointer->MinSpeed == 0 && tEncoderMotorControlPointer->EncoderCount > 6) {
                 tEncoderMotorControlPointer->MinSpeed = tSpeed;
                 tEncoderMotorControlPointer->StopSpeed = tSpeed;
             }
@@ -324,74 +353,7 @@ void EncoderMotor::calibrate() {
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
 
-    shutdownAllMotors(false);
-}
-
-void EncoderMotor::initGoDistanceCount(int aDistanceCount) {
-
-    if (aDistanceCount > 0) {
-        isDirectionForward = true;
-    } else if (aDistanceCount < 0) {
-        aDistanceCount = -aDistanceCount;
-        isDirectionForward = false;
-    }
-
-    if (State == MOTOR_STATE_STOPPED) {
-        ActualMaxSpeed = MaxSpeed - SpeedCompensation;
-        /*
-         * Start the motor and compensate for last distance delta
-         */
-        // Positive if driven too far
-        int8_t tLastDelta = (int) DistanceCount - (int) LastTargetDistanceCount;
-        if (abs(tLastDelta) <= MAX_DISTANCE_DELTA && aDistanceCount >= tLastDelta) {
-            TargetDistanceCount = aDistanceCount - tLastDelta;
-        } else {
-            TargetDistanceCount = aDistanceCount;
-        }
-        DistanceCount = 0;
-    } else {
-        /*
-         * Increase the distance to go for running motor
-         */
-        TargetDistanceCount += aDistanceCount;
-        NextChangeMaxTargetCount += aDistanceCount;
-    }
-    LastTargetDistanceCount = TargetDistanceCount;
-}
-
-void EncoderMotor::setDirection(bool goForward) {
-    isDirectionForward = goForward;
-    activate();
-}
-
-void EncoderMotor::activate() {
-    if (isDirectionForward) {
-        run(FORWARD);
-    } else {
-        run(BACKWARD);
-    }
-}
-
-void EncoderMotor::shutdownMotor(bool doBrake) {
-    setSpeedCompensated(0);
-    if (doBrake) {
-        run(BRAKE);
-    } else {
-        run(RELEASE);
-    }
-}
-
-/*
- * Stop car and reset all control values as speed, distances, debug values to 0x00
- * Leave calibration and compensation values unaffected.
- */
-void EncoderMotor::resetAndShutdown() {
-    shutdownMotor(false);
-    memset(&ActualSpeed, 0, (((uint8_t *) &Debug) + sizeof(Debug)) - &ActualSpeed);
-    isDirectionForward = true;
-// to force display of initial values
-    DistanceTickCounterHasChanged = true;
-    ValuesHaveChanged = true;
+    stopAllMotors(false);
 }
 
 /******************************************************************************************
@@ -400,6 +362,13 @@ void EncoderMotor::resetAndShutdown() {
 /*
  * minSpeed (at which car starts to move) for 8 volt is appr. 35 to 40, for 4.3 volt (USB supply) is appr. 90 to 100
  */
+void EncoderMotor::setEepromValuesDefaults() {
+    MinSpeed = DEFAULT_MIN_SPEED;
+    StopSpeed = DEFAULT_STOP_SPEED;
+    MaxSpeed = DEFAULT_MAX_SPEED;
+    SpeedCompensation = 0;
+}
+
 void EncoderMotor::readEeprom() {
     EepromMotorInfoStruct tEepromMotorInfo;
     eeprom_read_block((void*) &tEepromMotorInfo, (void*) (EncoderMotorNumber * sizeof(EepromMotorInfoStruct)),
@@ -407,25 +376,18 @@ void EncoderMotor::readEeprom() {
     /*
      * Plausibility check for values
      */
+    setEepromValuesDefaults();
     if (tEepromMotorInfo.MinSpeed < 100) {
         MinSpeed = tEepromMotorInfo.MinSpeed;
-    } else {
-        MinSpeed = DEFAULT_MIN_SPEED;
     }
     if (tEepromMotorInfo.StopSpeed < 120 && tEepromMotorInfo.StopSpeed > 10) {
         StopSpeed = tEepromMotorInfo.StopSpeed;
-    } else {
-        StopSpeed = DEFAULT_STOP_SPEED;
     }
-    if (tEepromMotorInfo.MaxSpeed < 40) {
-        MaxSpeed = DEFAULT_MAX_SPEED;
-    } else {
+    if (tEepromMotorInfo.MaxSpeed > 40) {
         MaxSpeed = tEepromMotorInfo.MaxSpeed;
     }
     if (tEepromMotorInfo.SpeedCompensation < 24) {
         SpeedCompensation = tEepromMotorInfo.SpeedCompensation;
-    } else {
-        SpeedCompensation = 0;
     }
     ValuesHaveChanged = true;
 }
@@ -441,18 +403,71 @@ void EncoderMotor::writeEeprom() {
             sizeof(EepromMotorInfoStruct));
 }
 
+/*************************
+ * Direct motor control
+ *************************/
+
+void EncoderMotor::setSpeed(int aRequestedSpeed) {
+    TB6612DcMotor::setSpeed(aRequestedSpeed); // output PWM value to motor
+}
+
+void EncoderMotor::setSpeedCompensated(uint8_t aRequestedSpeed) {
+    if (aRequestedSpeed == 0) {
+        stopMotor();
+    } else {
+        // avoid underflow
+        if (aRequestedSpeed > SpeedCompensation) {
+            CurrentSpeed = aRequestedSpeed - SpeedCompensation;
+        } else {
+            CurrentSpeed = 0;
+        }
+        TB6612DcMotor::setSpeed(CurrentSpeed); // output PWM value to motor
+        ValuesHaveChanged = true;
+    }
+}
+
+/*
+ * The one and only place where State is set to MOTOR_STATE_STOPPED
+ */
+void EncoderMotor::stopMotor(uint8_t aStopMode) {
+    /*
+     * Set state to MOTOR_STATE_STOPPED and update LastRideEncoderCount
+     */
+    CurrentSpeed = 0;
+    State = MOTOR_STATE_STOPPED;
+    TargetDistanceCount = 0;
+    ValuesHaveChanged = true;
+
+    TB6612DcMotor::stop(aStopMode);
+}
+
+/*
+ * Stop car and reset all control values as speed, distances, debug values to 0x00
+ * Leave calibration and compensation values unaffected.
+ */
+void EncoderMotor::stopMotorAndReset() {
+    stopMotor(MOTOR_RELEASE);
+    memset(&CurrentSpeed, 0, (((uint8_t *) &Debug) + sizeof(Debug)) - &CurrentSpeed);
+// to force display of initial values
+    EncoderTickCounterHasChanged = true;
+    ValuesHaveChanged = true;
+}
+
+/***************************************************
+ * Encoder functions
+ ***************************************************/
 void EncoderMotor::handleEncoderInterrupt() {
     long tMillis = millis();
-    uint16_t tDeltaMillis = tMillis - DistanceTickLastMillis;
+    uint16_t tDeltaMillis = tMillis - EncoderTickLastMillis;
     if (tDeltaMillis <= ENCODER_SENSOR_MASK_MILLIS) {
         // signal is ringing
-        ActualVelocity = 99;
+        CurrentVelocity = 99;
     } else {
-        DistanceTickLastMillis = tMillis;
-        DistanceCount++;
-        LastRideDistanceCount++;
-        ActualVelocity = VELOCITY_SCALE_VALUE / tDeltaMillis;
-        DistanceTickCounterHasChanged = true;
+        EncoderTickLastMillis = tMillis;
+        EncoderCount++;
+        LastRideEncoderCount++;
+        CurrentVelocity = VELOCITY_SCALE_VALUE / tDeltaMillis;
+        EncoderTickCounterHasChanged = true;
     }
 }
 
@@ -500,20 +515,16 @@ void EncoderMotor::enableInterruptOnBothEdges(uint8_t aIntPinNumber) {
     }
 }
 
+/*****************************************************
+ * Static convenience functions affecting all motors.
+ * If you have 2 motors, better use CarControl
+ *****************************************************/
+
 void EncoderMotor::updateAllMotors() {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {
         tEncoderMotorControlPointer->updateMotor();
-        tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
-    }
-}
-
-void EncoderMotor::setDirectionForAll(bool goForward) {
-    EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
-// walk through list
-    while (tEncoderMotorControlPointer != NULL) {
-        tEncoderMotorControlPointer->setDirection(goForward);
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
 }
@@ -525,7 +536,7 @@ void EncoderMotor::startAndWaitForFullSpeedForAll() {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {
-        tEncoderMotorControlPointer->initGoDistanceCount(3000);
+        tEncoderMotorControlPointer->initGoDistanceCount(INFINITE_DISTANCE_COUNT);
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
     do {
@@ -553,26 +564,6 @@ void EncoderMotor::goDistanceCountForAll(int aDistanceCount, void (*aLoopCallbac
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
     waitUntilAllMotorsStopped(aLoopCallback);
-}
-
-/*
- * The one and only place where State is set to MOTOR_STATE_STOPPED
- */
-void EncoderMotor::setSpeedCompensated(uint8_t aRequestedSpeed) {
-    if (aRequestedSpeed == 0) {
-        /*
-         * Set state to MOTOR_STATE_STOPPED and update LastRideDistanceCount
-         */
-        ActualSpeed = 0;
-        State = MOTOR_STATE_STOPPED;
-        TargetDistanceCount = 0;
-    } else if (aRequestedSpeed > SpeedCompensation) {
-        ActualSpeed = aRequestedSpeed - SpeedCompensation;
-    } else {
-        ActualSpeed = 0;
-    }
-    setSpeed(ActualSpeed); // output value to motor
-    ValuesHaveChanged = true;
 }
 
 bool EncoderMotor::allMotorsStarted() {
@@ -610,8 +601,8 @@ void EncoderMotor::stopAllMotorsAndWaitUntilStopped() {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {
-        tEncoderMotorControlPointer->NextChangeMaxTargetCount = tEncoderMotorControlPointer->DistanceCount;
-        tEncoderMotorControlPointer->TargetDistanceCount = tEncoderMotorControlPointer->DistanceCount
+        tEncoderMotorControlPointer->NextChangeMaxTargetCount = tEncoderMotorControlPointer->EncoderCount;
+        tEncoderMotorControlPointer->TargetDistanceCount = tEncoderMotorControlPointer->EncoderCount
                 + tEncoderMotorControlPointer->DistanceCountAfterRampUp;
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
@@ -624,11 +615,11 @@ void EncoderMotor::stopAllMotorsAndWaitUntilStopped() {
     }
 }
 
-void EncoderMotor::resetAndStopAllMotors() {
+void EncoderMotor::stopAllMotorsAndreset() {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {
-        tEncoderMotorControlPointer->resetAndShutdown();
+        tEncoderMotorControlPointer->stopMotorAndReset();
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
 }
@@ -642,11 +633,11 @@ void EncoderMotor::waitUntilAllMotorsStopped(void (*aLoopCallback)(void)) {
     } while (!EncoderMotor::allMotorsStopped());
 }
 
-void EncoderMotor::shutdownAllMotors(bool doBrake) {
+void EncoderMotor::stopAllMotors(uint8_t aStopMode) {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {
-        tEncoderMotorControlPointer->shutdownMotor(doBrake);
+        tEncoderMotorControlPointer->stopMotor(aStopMode);
         tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
     }
 }

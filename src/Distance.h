@@ -13,7 +13,7 @@
 void initDistance();
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
-#include "SparkFun_VL53L1X.h"
+#include <SparkFun_VL53L1X.h>
 extern SFEVL53L1X sToFDistanceSensor;
 uint8_t getToFDistanceAsCentimeter();
 uint8_t readToFDistanceAsCentimeter(); // no start of measurement, just read result.

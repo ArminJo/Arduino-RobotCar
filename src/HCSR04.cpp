@@ -11,7 +11,25 @@
  *  Old module with 3 16 pin chips but with no pullup resistors near the connector row: Connect Trigger and Echo with a resistor > 200 Ohm. Use 10 kOhm.
  *  New module with 1 16 pin and 2 8 pin chips: Connect Trigger and Echo by a resistor > 200 Ohm and < 22 kOhm.
  *  All modules: Connect Trigger and Echo by a resistor of 4.7 kOhm.
- *  Some old HY-SRF05 modules of mine cannot be converted, since the output signal going low triggers the next measurement.
+ *  Some old HY-SRF05 modules of mine cannot be converted by adding a 4.7 kOhm resistor,
+ *  since the output signal going low triggers the next measurement. But they work with removing the 10 kOhm pull up resistors and adding 10 kOhm.
+ *
+ * Sensitivity is increased by removing C3 / the low pass part of the 22 kHz Bandpass filter.
+ * After this the crosstalking of the output signal will be detected as a low distance. We can avoid this by changing R7 to 0 Ohm.
+ *
+ *  Module Type                   |   Characteristics     |         3 Pin Mode          | Increase sensitivity
+ *  ------------------------------------------------------------------------------------------------------------
+ *  3 * 14 pin IC's 2 transistors | C2 below right IC/U2  | 10 kOhm pin 1+2 middle IC   | not needed, because of Max232
+ *                                | right IC is Max232    |                             |
+ *  3 * 14 pin IC's 2 transistors | Transistor between    |                             | -C2, R11=1.5MOhm, R12=0
+ *                                | middle and right IC   |                             |
+ *  3 * 14 pin IC's               | R17 below right IC    | 10 kOhm pin 1+2 middle IC   |
+ *  1*4 2*8 pin IC's              |                       | 10 kOhm pin 3+4 right IC    | -C4, R7=1.5MOhm, R10=0
+ *  HY-SRF05 3 * 14 pin IC's      |                       | 10 kOhm pin 1+2 middle IC   | - bottom left C, R16=1.5MOhm, R15=?
+ *
+ *  The CS100A module is not very sensitive at short or mid range but can detect up to 3m. Smallest distance is 2 cm.
+ *  The amplified analog signal is available at pin 5 and the comparator output at pin 6. There you can see other echoes.
+ *  3 Pin mode is difficult since it retriggers itself at distances below 7 cm.
  *
  *  Copyright (C) 2018-2020  Armin Joachimsmeyer
  *  Email: armin.joachimsmeyer@gmail.com

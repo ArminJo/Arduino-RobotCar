@@ -1,0 +1,57 @@
+# TestCompile.yml
+# Github workflow script to test compile all examples of an Arduino library repository.
+#
+# Copyright (C) 2020  Armin Joachimsmeyer
+# https://github.com/ArminJo/Github-Actions
+#
+
+# This is the name of the workflow, visible on GitHub UI.
+name: TestCompile
+on: push
+jobs:
+  build:
+    name: Test compiling examples for UNO
+    runs-on: ubuntu-latest
+    env:
+      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,BlueDisplay,PlayRtttl,SparkFun VL53L1X 4m Laser Distance Sensor
+
+    strategy:
+      matrix:
+        arduino-boards-fqbn:
+          - arduino:avr:uno
+          - arduino:avr:uno|TimeOfFlight
+          - arduino:avr:uno|TB6612Breakout
+
+        include:
+          - arduino-boards-fqbn: arduino:avr:uno|TB6612Breakout # UNO board with ToF distance sensor
+            examples-build-properties:
+              BD_RobotCar:
+                -DBLUETOOTH_BAUD_RATE=BAUD_115200
+                -DUSE_STANDARD_SERIAL
+                -DUSE_TB6612_BREAKOUT_BOARD
+                -DUSE_PAN_TILT_SERVO
+                -DUSE_US_SENSOR_1_PIN_MODE     
+
+          - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
+            examples-build-properties:
+              BD_RobotCar:
+                -DBLUETOOTH_BAUD_RATE=BAUD_115200
+                -DUSE_STANDARD_SERIAL
+                -DCAR_HAS_TOF_DISTANCE_SENSOR
+                -DUSE_US_SENSOR_1_PIN_MODE 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      # Test of the arduino-test-compile script
+      - name: Compile all examples using the bash script arduino-test-compile.sh
+        env:
+          # Passing parameters to the script by setting the appropriate ENV_* variables.
+          ENV_ARDUINO_BOARD_FQBN: ${{ matrix.arduino-boards-fqbn }}
+          ENV_REQUIRED_LIBRARIES: ${{ env.REQUIRED_LIBRARIES }}
+          ENV_EXAMPLES_BUILD_PROPERTIES: ${{ toJson(matrix.examples-build-properties) }}
+        run: |
+          wget --quiet https://raw.githubusercontent.com/ArminJo/arduino-test-compile/master/arduino-test-compile.sh
+            ls -l arduino-test-compile.sh
+            chmod +x arduino-test-compile.sh
+            ./arduino-test-compile.sh                                          

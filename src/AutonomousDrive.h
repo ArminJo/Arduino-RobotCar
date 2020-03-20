@@ -59,7 +59,7 @@ extern uint8_t sCentimeterPerScan; // = sCentimeterPerScanTimesTwo / 2
 extern uint8_t sScanMode;
 #endif
 
-void initUSServo();
+void initDistanceServo();
 void DistanceServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
 
 /*

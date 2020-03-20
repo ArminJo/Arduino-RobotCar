@@ -39,7 +39,7 @@
 /*
  * Car Control
  */
-CarMotorControl RobotCar;
+CarMotorControl RobotCarMotorControl;
 float sVINVoltage;
 void checkForLowVoltage();
 
@@ -48,6 +48,7 @@ bool sPlayMelody = false;
 void playRandomMelody();
 #endif
 
+void initRobotCarPins();
 void initLaserServos();
 void doAutonomousDrive();
 
@@ -89,48 +90,38 @@ int doUserCollisionDetection() {
  * Start of robot car control program
  */
 void setup() {
-// initialize digital pins as an output.
-    pinMode(TRIGGER_OUT_PIN, OUTPUT);
+    setupGUI(); // this enables output by BlueDisplay1
 
-#ifdef USE_US_SENSOR_1_PIN_MODE
-    initUSDistancePin(TRIGGER_OUT_PIN);
-#else
-    initUSDistancePins(TRIGGER_OUT_PIN, ECHO_IN_PIN);
+    if (!BlueDisplay1.isConnectionEstablished()) {
+#if defined (USE_STANDARD_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
+#  if defined(__AVR_ATmega32U4__)
+    while (!Serial); //delay for Leonardo, but this loops forever for Maple Serial
+#  endif
+        // Just to know which program is running on my Arduino
+        Serial.println(F("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from  " __DATE__));
 #endif
-    initUSServo();
+    } else {
+        // Just to know which program is running on my Arduino
+        BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
+    }
+
+    initRobotCarPins();
 
 #ifdef HAS_LASER
-    pinMode(LASER_OUT_PIN, OUTPUT);
     initLaserServos();
 #endif
 
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    pinMode(CAMERA_SUPPLY_CONTROL_PIN, OUTPUT);
-#endif
-
-    /*
-     * For slot type optocoupler interrupts on pin PD2 + PD3
-     */
-    EncoderMotor::enableINT0AndINT1Interrupts();
-    EncoderMotor::EnableValuesPrint = true;
     // initialize motors
-    RobotCar.init(TWO_WD_DETECTION_PIN);
+    RobotCarMotorControl.init(PIN_TWO_WD_DETECTION);
 
 // reset all values
     resetPathData();
-
-    setupGUI();
-
-    // Just to know which program is running on my Arduino
-    BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
-
     initDistance();
 
     readVINVoltage();
     randomSeed(sVINVoltage * 10000);
-#ifndef USE_TB6612_BREAKOUT_BOARD
-    tone(SPEAKER_PIN, 2200, 100);
-#endif
+
+    tone(PIN_SPEAKER, 2200, 100);
 }
 
 void loop() {
@@ -174,17 +165,17 @@ void loop() {
      * check for playing melody
      */
     if (sPlayMelody) {
-        RobotCar.resetAndShutdownMotors();
+        RobotCarMotorControl.resetAndShutdownMotors();
         playRandomMelody();
     }
 
 #endif
 
-    if (sRobotCarStarted && (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST)) {
+    if (sRobotCarMoving && (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST)) {
         /*
          * Direct speed control by GUI
          */
-        RobotCar.updateMotors();
+        RobotCarMotorControl.updateMotors();
         rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
     }
 
@@ -194,6 +185,17 @@ void loop() {
          */
         doAutonomousDrive();
     }
+}
+
+void initRobotCarPins() {
+
+#ifdef HAS_LASER
+    pinMode(PIN_LASER_OUT, OUTPUT);
+#endif
+
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    pinMode(PIN_CAMERA_SUPPLY_CONTROL, OUTPUT);
+#endif
 }
 
 /*
@@ -210,7 +212,6 @@ void doAutonomousDrive() {
     } else {
         tCollisionDetectionFunction = &doUserCollisionDetection;
     }
-    EncoderMotor::EnableValuesPrint = false;
     /*
      * Autonomous driving main loop
      */
@@ -222,19 +223,19 @@ void doAutonomousDrive() {
         loopGUI();
     }
     /*
-     * Stop autonomous driving. RobotCar.isStopped() is true here
+     * Stop autonomous driving. RobotCarMotorControl.isStopped() is true here
      */
     if (sStepMode != MODE_SINGLE_STEP) {
         // add last driven distance to path
-        insertToPath(rightEncoderMotor.LastRideDistanceCount, sLastDegreesTurned, true);
+        insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
     }
-    EncoderMotor::EnableValuesPrint = true;
     DistanceServoWriteAndDelay(90);
 }
 
 void readVINVoltage() {
     uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(VIN_11TH_IN_CHANNEL, INTERNAL);
-    float tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
+    uint16_t tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
+    BlueDisplay1.debug("Raw=", tVIN);
     // Switch back (to DEFAULT)
     ADMUX = tOldADMUX;
 
@@ -260,10 +261,15 @@ void checkForLowVoltage() {
         // alternatively call readAndPrintVinPeriodically();
 
         BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + TEXT_SIZE_33_HEIGHT, F("too low"));
-        RobotCar.resetAndShutdownMotors();
+        RobotCarMotorControl.stopMotorsAndReset();
+        tone(PIN_SPEAKER, 1000, 100);
+        delay(200);
+        tone(PIN_SPEAKER, 1000, 100);
+
         do {
-            readAndPrintVinPeriodically();
-            delay(PRINT_VOLTAGE_PERIOD_MILLIS);
+            readAndPrintVinPeriodically(); // print current voltage
+            delayAndLoopGUI(PRINT_VOLTAGE_PERIOD_MILLIS);  // and wait
+            readVINVoltage(); // read new VCC value
         } while (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD);
         // refresh current page
         GUISwitchPages(NULL, 0);
@@ -282,15 +288,15 @@ void playRandomMelody() {
 
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    startPlayRandomRtttlFromArrayPGM(MOTOR_0_FORWARD_PIN, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+    startPlayRandomRtttlFromArrayPGM(PIN_MOTOR_0_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
     while (updatePlayRtttl()) {
         // check for pause in melody (i.e. timer disabled) and disable motor for this period
         if ( TIMSK2 & _BV(OCIE2A)) {
             // timer enabled
-            digitalWriteFast(MOTOR_0_PWM_PIN, HIGH); // re-enable motor
+            digitalWriteFast(PIN_MOTOR_0_PWM, HIGH); // re-enable motor
         } else {
             // timer disabled
-            digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor for pause in melody
+            digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor for pause in melody
         }
         checkAndHandleEvents();
         if (!sPlayMelody) {
@@ -299,7 +305,7 @@ void playRandomMelody() {
         }
     }
     TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
-    digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor
+    digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor
     bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
     sPlayMelody = false;
 }
@@ -307,10 +313,10 @@ void playRandomMelody() {
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    tone(MOTOR_0_FORWARD_PIN, aFrequency);
+    tone(PIN_MOTOR_0_FORWARD, aFrequency);
     delay(aDuration);
-    noTone(MOTOR_0_FORWARD_PIN);
-    digitalWriteFast(MOTOR_0_PWM_PIN, LOW); // disable motor
+    noTone(PIN_MOTOR_0_FORWARD);
+    digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor
     bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
 }
 
@@ -319,7 +325,7 @@ void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
  */
 #ifdef USE_TB6612_BREAKOUT_BOARD
 ISR(TIMER2_COMPB_vect) {
-    digitalWriteFast(MOTOR_0_BACKWARD_PIN, !digitalReadFast(MOTOR_0_FORWARD_PIN));
+    digitalWriteFast(PIN_MOTOR_0_BACKWARD, !digitalReadFast(PIN_MOTOR_0_FORWARD));
 }
 #endif
 #endif // ENABLE_RTTTL
@@ -334,11 +340,11 @@ Servo TiltServo;
 
 void initLaserServos() {
 #ifdef USE_PAN_TILT_SERVO
-    TiltServo.attach(LASER_SERVO_TILT_PIN);
+    TiltServo.attach(PIN_LASER_SERVO_TILT);
     TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
 #endif
 // initialize and set Laser pan servo
-    LaserPanServo.attach(LASER_SERVO_PAN_PIN);
+    LaserPanServo.attach(PIN_LASER_SERVO_PAN);
     LaserPanServo.write(90);
 }
 

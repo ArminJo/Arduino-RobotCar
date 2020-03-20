@@ -164,7 +164,8 @@ void clearPrintedForwardDistancesInfos();
 void drawForwardDistancesInfos();
 void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClear);
 
-extern bool sRobotCarStarted;
+extern bool sRobotCarMoving;
+extern uint8_t sRobotCarDirection;
 extern bool sRuningAutonomousDrive;
 
 extern const int sGetDistancePeriod;

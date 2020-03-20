@@ -1,16 +1,12 @@
 /*
  * TestPage.cpp
  *
- *  Contains all GUI elements for test controlling the RobotCar.
+ *  Contains all GUI elements for test controlling the RobotCarMotorControl.
  *
- *  Calibration: Sets lowest speed for which wheels are moving.
- *  Speed Slider left: Sets speed for manual control which serves also as maximum speed for autonomous drive if "Stored"
- *  Store: Stores calibration info and maximum speed.
- *
- *  Needs BlueDisplay library.
+ *  Requires BlueDisplay library.
  *
  *  Created on: 20.09.2016
- *  Copyright (C) 2016  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This program is distributed in the hope that it will be useful,
@@ -51,10 +47,10 @@ bool sShowDebug = false;
 const int sGetDistancePeriod = 500;
 
 void doDistance(BDButton * aTheTouchedButton, int16_t aValue) {
-    if (!RobotCar.isDirectionForward) {
+    if (sRobotCarDirection == DIRECTION_BACKWARD) {
         aValue = -aValue;
     }
-    RobotCar.initGoDistanceCentimeter(aValue);
+    RobotCarMotorControl.initGoDistanceCentimeter(aValue);
 }
 
 void doShowDebug(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -62,11 +58,11 @@ void doShowDebug(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 void doRotation(BDButton * aTheTouchedButton, int16_t aValue) {
-    RobotCar.initRotateCar(aValue, !RobotCar.isDirectionForward);
+    RobotCarMotorControl.initRotateCar(aValue, sRobotCarDirection);
 }
 
 /*
- * Store ActualSpeed as MaxSpeed
+ * Store CurrentSpeed as MaxSpeed
  */
 void doStoreSpeed(float aValue) {
     uint16_t tValue = aValue;
@@ -90,12 +86,11 @@ void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 /*
- * stop and reset motors, but do not stop control
+ * stop and reset motors
  */
 void doReset(BDButton * aTheTouchedButton, int16_t aValue) {
-    RobotCar.resetAndShutdownMotors();
-    setDirectionButtonCaption();
-    startStopRobotCar(true);
+    RobotCarMotorControl.stopMotorsAndReset();
+    startStopRobotCar(false);
 }
 
 void initTestPage(void) {
@@ -190,8 +185,6 @@ void startTestPage(void) {
 void loopTestPage(void) {
 
     checkAndShowDistancePeriodically(sGetDistancePeriod);
-
-    showSpeedSliderValue();
 
     if (EncoderMotor::ValuesHaveChanged) {
         EncoderMotor::ValuesHaveChanged = false;
