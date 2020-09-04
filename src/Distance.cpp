@@ -6,6 +6,8 @@
  *  Copyright (C) 2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -74,13 +76,16 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
 }
 
 #ifdef CAR_HAS_IR_DISTANCE_SENSOR
+/*
+ * The 1080 needs 39 ms for each measurement cycle
+ */
 uint8_t getIRDistanceAsCentimeter() {
     float tVolt = analogRead(PIN_IR_DISTANCE_SENSOR);
     // * 0.004887585 for 1023 = 5V
-    // Model 1080
+    // Model 1080 / GP2Y0A21YK0F
     return (29.988 * pow(tVolt * 0.004887585, -1.173)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
 
-    // Model 20150
+    // Model 20150 - Do not forget to add at least 100uF capacitor across the Vcc and GND connections on the sensor
 //    return (60.374 * pow(tVolt * 0.004887585, -1.16)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
 }
 #endif

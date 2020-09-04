@@ -11,14 +11,15 @@
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
- *
  */
 
 #include <Arduino.h>
@@ -30,11 +31,11 @@
 #include "HCSR04.h"
 #include "ADCUtils.h"
 
-#ifdef USE_TB6612_BREAKOUT_BOARD
+#ifdef ENABLE_RTTTL
 #include <PlayRtttl.h>
 #endif
 
-#define VERSION_EXAMPLE "2.0"
+#define VERSION_EXAMPLE "3.0"
 
 /*
  * Car Control
@@ -50,7 +51,6 @@ void playRandomMelody();
 
 void initRobotCarPins();
 void initLaserServos();
-void doAutonomousDrive();
 
 /*************************************************************************************
  * Extend this basic collision detection to test your own skill in autonomous driving
@@ -79,7 +79,7 @@ int doUserCollisionDetection() {
          * go to max side distance
          */
         // formula to convert index to degree.
-        return -90 + DEGREES_PER_STEP * sForwardDistancesInfo.IndexOfMaxDistance;
+        return DEGREES_PER_STEP * sForwardDistancesInfo.IndexOfMaxDistance + START_DEGREES - 90;
     } else {
         // Turn backwards.
         return 180;
@@ -87,9 +87,42 @@ int doUserCollisionDetection() {
 }
 
 /*
+ First, we need a variable to hold the reset cause that can be written before
+ early sketch initialization (that might change r2), and won't be reset by the
+ various initialization code.
+ avr-gcc provides for this via the ".noinit" section.
+ */
+uint8_t sMCUSR __attribute__ ((section(".noinit")));
+
+/*
+ Next, we need to put some code to save reset cause from the bootload (in r2)
+ to the variable.  Again, avr-gcc provides special code sections for this.
+ If compiled with link time optimization (-flto), as done by the Arduno
+ IDE version 1.6 and higher, we need the "used" attribute to prevent this
+ from being omitted.
+ */
+void resetFlagsInit(void) __attribute__ ((naked))
+__attribute__ ((used))
+__attribute__ ((section (".init0")));
+void resetFlagsInit(void) {
+    /*
+     save the reset flags passed from the bootloader
+     This is a "simple" matter of storing (STS) r2 in the special variable
+     that we have created.  We use assembler to access the right variable.
+     */
+    __asm__ __volatile__ ("sts %0, r2\n" : "=m" (sMCUSR) :);
+}
+
+bool sBootReasonWasReset = false;
+/*
  * Start of robot car control program
  */
 void setup() {
+    MCUSR = 0;
+    if (sMCUSR & (1 << EXTRF)) {
+        sBootReasonWasReset = true;
+    }
+
     setupGUI(); // this enables output by BlueDisplay1
 
     if (!BlueDisplay1.isConnectionEstablished()) {
@@ -99,20 +132,27 @@ void setup() {
 #  endif
         // Just to know which program is running on my Arduino
         Serial.println(F("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from  " __DATE__));
+        Serial.print(F("sMCUSR=0x"));
+        Serial.println(sMCUSR, HEX);
 #endif
     } else {
         // Just to know which program is running on my Arduino
         BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
+//        BlueDisplay1.debug("sMCUSR=", sMCUSR);
     }
 
     initRobotCarPins();
 
-#ifdef HAS_LASER
+#ifdef CAR_HAS_LASER
     initLaserServos();
 #endif
 
     // initialize motors
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    RobotCarMotorControl.init(PIN_RIGHT_MOTOR_FORWARD, PIN_RIGHT_MOTOR_BACKWARD, PIN_RIGHT_MOTOR_PWM, PIN_LEFT_MOTOR_FORWARD, PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM,PIN_TWO_WD_DETECTION);
+#else
     RobotCarMotorControl.init(PIN_TWO_WD_DETECTION);
+#endif
 
 // reset all values
     resetPathData();
@@ -130,8 +170,8 @@ void loop() {
     /*
      * check if timeout, no Bluetooth connection and connected to LIPO battery
      */
-    if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < 11000) && (millis() > 10000)
-            && (sVINVoltage > VOLTAGE_USB_THRESHOLD)) {
+    if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < (TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS + 1000))
+            && (millis() > TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS) && (sVINVoltage > VOLTAGE_USB_THRESHOLD)) {
         /*
          * Timeout just reached, play melody and start autonomous drive
          */
@@ -141,7 +181,13 @@ void loop() {
 #else
         delayAndLoopGUI(6000); // delay needed for millis() check above!
 #endif
-        startStopAutomomousDrive(true, true);
+        // Set right page for reconnect
+        sCurrentPage = PAGE_AUTOMATIC_CONTROL;
+        if (sBootReasonWasReset) {
+            startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
+        } else {
+            startStopAutomomousDrive(true, MODE_FOLLOWER);
+        }
     }
 
     /*
@@ -152,98 +198,65 @@ void loop() {
     /*
      * After 4 minutes of user inactivity, make noise by scanning with US Servo and repeat it every 2. minute
      */
-#if VERSION_BLUE_DISPLAY_NUMERICAL >= 121
-    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + 240000L < millis()) {
-        sMillisOfLastReceivedBDEvent = millis() - 120000; // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
-        fillAndShowForwardDistancesInfo((sCurrentPage == PAGE_AUTOMATIC_CONTROL), true);
+    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS < millis()) {
+        sMillisOfLastReceivedBDEvent = millis() - (TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
+        fillAndShowForwardDistancesInfo((sCurrentPage == PAGE_AUTOMATIC_CONTROL), true, true);
         DistanceServo.write(90); // set servo back to normal
     }
-#endif
 
 #ifdef ENABLE_RTTTL
     /*
      * check for playing melody
      */
     if (sPlayMelody) {
-        RobotCarMotorControl.resetAndShutdownMotors();
+        RobotCarMotorControl.stopMotorsAndReset();
         playRandomMelody();
     }
 
 #endif
 
-    if (sRobotCarMoving && (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST)) {
+    if (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST) {
         /*
          * Direct speed control by GUI
          */
-        RobotCarMotorControl.updateMotors();
-        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+        if (RobotCarMotorControl.updateMotors()) {
+            // At least one motor is moving here
+            rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+        }
     }
 
     if (sRuningAutonomousDrive) {
-        /*
-         * Start autonomous driving
-         */
-        doAutonomousDrive();
+        if (sDriveMode == MODE_FOLLOWER) {
+            driveFollowerModeOneStep();
+        } else {
+            driveAutonomousOneStep();
+        }
     }
 }
 
 void initRobotCarPins() {
 
-#ifdef HAS_LASER
+#ifdef CAR_HAS_LASER
     pinMode(PIN_LASER_OUT, OUTPUT);
 #endif
 
-#ifdef USE_TB6612_BREAKOUT_BOARD
+#ifdef CAR_HAS_CAMERA
     pinMode(PIN_CAMERA_SUPPLY_CONTROL, OUTPUT);
 #endif
-}
-
-/*
- * Start, loop and stop of autonomous driving
- */
-void doAutonomousDrive() {
-    /*
-     * Start autonomous driving
-     */
-    int (*tCollisionDetectionFunction)();
-
-    if (sUseBuiltInAutonomousDriveStrategy) {
-        tCollisionDetectionFunction = &doBuiltInCollisionDetection;
-    } else {
-        tCollisionDetectionFunction = &doUserCollisionDetection;
-    }
-    /*
-     * Autonomous driving main loop
-     */
-    while (sRuningAutonomousDrive) {
-        driveAutonomousOneStep(tCollisionDetectionFunction);
-        /*
-         * check for user input and update display output
-         */
-        loopGUI();
-    }
-    /*
-     * Stop autonomous driving. RobotCarMotorControl.isStopped() is true here
-     */
-    if (sStepMode != MODE_SINGLE_STEP) {
-        // add last driven distance to path
-        insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
-    }
-    DistanceServoWriteAndDelay(90);
 }
 
 void readVINVoltage() {
     uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(VIN_11TH_IN_CHANNEL, INTERNAL);
     uint16_t tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
-    BlueDisplay1.debug("Raw=", tVIN);
-    // Switch back (to DEFAULT)
+//    BlueDisplay1.debug("VIN Raw=", tVIN);
+            // Switch back (to DEFAULT)
     ADMUX = tOldADMUX;
 
-// assume resistor network of 100k / 10k (divider by 11)
+// assume resistor network of 1Mk / 100k (divider by 11)
 // tVCC * 0,01181640625
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    // we have a Diode (needs 0.8 volt) between LIPO and VIN
-    sVINVoltage = (tVIN * ((11.0 * 1.07) / 1023)) + 0.8;
+#ifdef VOLTAGE_CORRECTION
+    // we have a diode (needs 0.8 volt) between LIPO and VIN
+    sVINVoltage = (tVIN * ((11.0 * 1.07) / 1023)) + VOLTAGE_CORRECTION;
 #else
     sVINVoltage = tVIN * ((11.0 * 1.07) / 1023);
 #endif
@@ -251,28 +264,37 @@ void readVINVoltage() {
 
 void checkForLowVoltage() {
     if (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
-        drawCommonGui();
-        uint16_t tNextX = BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
-        char tDataBuffer[18];
-        char tVCCString[6];
-        dtostrf(sVINVoltage, 4, 2, tVCCString);
-        sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
-        BlueDisplay1.drawText(tNextX + TEXT_SIZE_33_WIDTH, 50, tDataBuffer);
-        // alternatively call readAndPrintVinPeriodically();
-
-        BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + TEXT_SIZE_33_HEIGHT, F("too low"));
         RobotCarMotorControl.stopMotorsAndReset();
-        tone(PIN_SPEAKER, 1000, 100);
-        delay(200);
-        tone(PIN_SPEAKER, 1000, 100);
 
-        do {
-            readAndPrintVinPeriodically(); // print current voltage
-            delayAndLoopGUI(PRINT_VOLTAGE_PERIOD_MILLIS);  // and wait
-            readVINVoltage(); // read new VCC value
-        } while (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD);
-        // refresh current page
-        GUISwitchPages(NULL, 0);
+        if (BlueDisplay1.isConnectionEstablished()) {
+            drawCommonGui();
+            BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
+            // print current "too low" voltage
+            char tDataBuffer[18];
+            char tVCCString[6];
+            dtostrf(sVINVoltage, 4, 2, tVCCString);
+            sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
+            BlueDisplay1.drawText(80, 50 + TEXT_SIZE_33_HEIGHT, tDataBuffer);
+            BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + (2 * TEXT_SIZE_33_HEIGHT), F("too low"));
+        }
+
+        tone(PIN_SPEAKER, 2200, 100);
+        delay(200);
+        tone(PIN_SPEAKER, 2200, 100);
+
+        if (BlueDisplay1.isConnectionEstablished()) {
+            uint8_t tLoopCount = VOLTAGE_TOO_LOW_DELAY_ONLINE / 500; // 12
+            do {
+                readAndPrintVin(); // print current voltage
+                delayMillisWithCheckAndHandleEvents(500); // and wait
+                tLoopCount--;
+                readVINVoltage(); // read new VCC value
+            } while (tLoopCount > 0 || (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD));
+            // refresh current page
+            GUISwitchPages(NULL, 0);
+        } else {
+            delay (VOLTAGE_TOO_LOW_DELAY_OFFLINE);
+        }
     }
 }
 
@@ -288,15 +310,15 @@ void playRandomMelody() {
 
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    startPlayRandomRtttlFromArrayPGM(PIN_MOTOR_0_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+    startPlayRandomRtttlFromArrayPGM(PIN_LEFT_MOTOR_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
     while (updatePlayRtttl()) {
         // check for pause in melody (i.e. timer disabled) and disable motor for this period
         if ( TIMSK2 & _BV(OCIE2A)) {
             // timer enabled
-            digitalWriteFast(PIN_MOTOR_0_PWM, HIGH); // re-enable motor
+            digitalWriteFast(PIN_LEFT_MOTOR_PWM, HIGH); // re-enable motor
         } else {
             // timer disabled
-            digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor for pause in melody
+            digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor for pause in melody
         }
         checkAndHandleEvents();
         if (!sPlayMelody) {
@@ -305,7 +327,7 @@ void playRandomMelody() {
         }
     }
     TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
-    digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor
+    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
     bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
     sPlayMelody = false;
 }
@@ -313,10 +335,10 @@ void playRandomMelody() {
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    tone(PIN_MOTOR_0_FORWARD, aFrequency);
+    tone(PIN_LEFT_MOTOR_FORWARD, aFrequency);
     delay(aDuration);
-    noTone(PIN_MOTOR_0_FORWARD);
-    digitalWriteFast(PIN_MOTOR_0_PWM, LOW); // disable motor
+    noTone(PIN_LEFT_MOTOR_FORWARD);
+    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
     bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
 }
 
@@ -325,7 +347,7 @@ void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
  */
 #ifdef USE_TB6612_BREAKOUT_BOARD
 ISR(TIMER2_COMPB_vect) {
-    digitalWriteFast(PIN_MOTOR_0_BACKWARD, !digitalReadFast(PIN_MOTOR_0_FORWARD));
+    digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWARD));
 }
 #endif
 #endif // ENABLE_RTTTL
@@ -333,18 +355,22 @@ ISR(TIMER2_COMPB_vect) {
 /*
  * Laser servo stuff
  */
+#ifdef CAR_HAS_PAN_SERVO
 Servo LaserPanServo;
-#ifdef USE_PAN_TILT_SERVO
+#endif
+#ifdef CAR_HAS_TILT_SERVO
 Servo TiltServo;
 #endif
 
 void initLaserServos() {
-#ifdef USE_PAN_TILT_SERVO
-    TiltServo.attach(PIN_LASER_SERVO_TILT);
-    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
-#endif
+#ifdef CAR_HAS_PAN_SERVO
 // initialize and set Laser pan servo
     LaserPanServo.attach(PIN_LASER_SERVO_PAN);
     LaserPanServo.write(90);
+#endif
+#ifdef CAR_HAS_TILT_SERVO
+    TiltServo.attach(PIN_LASER_SERVO_TILT);
+    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
+#endif
 }
 

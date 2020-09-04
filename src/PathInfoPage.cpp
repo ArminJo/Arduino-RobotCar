@@ -8,14 +8,16 @@
  *  Requires BlueDisplay library.
  *
  *  Created on: 13.05.2019
- *  Copyright (C) 2016  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
+ *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
@@ -31,25 +33,19 @@ void doResetPath(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 void initPathInfoPage(void) {
-    TouchButtonResetPath.init(0, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_4, COLOR_RED, F("Clear"), TEXT_SIZE_22,
+    TouchButtonResetPath.init(0, 0, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_6, COLOR_RED, F("Clear"), TEXT_SIZE_22,
             FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doResetPath);
 }
 
 void drawPathInfoPage(void) {
     drawCommonGui();
+    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Path"));
+
+    TouchButtonBackSmall.drawButton();
+    TouchButtonStep.drawButton();
+    TouchButtonResetPath.drawButton();
 
     DrawPath();
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4 + (2 * TEXT_SIZE_22_WIDTH), TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Path"));
-
-    /*
-     * relocate small back and step buttons
-     */
-    TouchButtonBackSmall.setPosition(BUTTON_WIDTH_4_POS_4, BUTTON_HEIGHT_4_LINE_4);
-    TouchButtonBackSmall.drawButton();
-    TouchButtonStep.setPosition(LAYOUT_320_WIDTH - BUTTON_WIDTH_3_5, 0);
-    TouchButtonStep.drawButton();
-
-    TouchButtonResetPath.drawButton();
 }
 
 void startPathInfoPage(void) {
@@ -61,7 +57,6 @@ void loopPathInfoPage(void) {
 }
 
 void stopPathInfoPage(void) {
-    TouchButtonStep.setPosition(0, BUTTON_HEIGHT_4_LINE_3);
 }
 
 /*

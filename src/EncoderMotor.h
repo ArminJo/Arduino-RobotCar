@@ -2,7 +2,18 @@
  * EncoderMotor.h
  *
  *  Created on: 16.09.2016
- *      Author: Armin
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
+ *  armin.joachimsmeyer@gmail.com
+ *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
 #ifndef SRC_ENCODERMOTORCONTROL_H_
@@ -70,15 +81,20 @@ class EncoderMotor: TB6612DcMotor {
 public:
 
     EncoderMotor();
+#ifdef USE_TB6612_BREAKOUT_BOARD
+    void init(uint8_t aForwardPin, uint8_t aBackwardPin, uint8_t aPWMPin);
+#else
+    void init(uint8_t aMotorNumber);
+#endif
 //    virtual ~EncoderMotor();
 
-    void init(uint8_t aMotorNumber);
 
     /*
      * Functions for going a fixed distance
      */
     void initGoDistanceCount(int aDistanceCount);
-    void updateMotor();
+    void initGoDistanceCount(unsigned int aDistanceCount, uint8_t aRequestedDirection);
+    bool updateMotor();
     void synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t aCheckInterval); // Computes motor speed compensation value in order to go exactly straight ahead
     static void calibrate(); // Generates a rising ramp and detects the first movement -> this sets MinSpeed / dead band
 
@@ -100,7 +116,9 @@ public:
      * Direct motor control
      */
     void setSpeed(int aRequestedSpeed);
-    void setSpeedCompensated(uint8_t aRequestedSpeed);
+    void setCurrentSpeedCompensated(int aRequestedSpeed);
+    void setCurrentSpeedCompensated(uint8_t aRequestedSpeed, uint8_t aRequestedDirection);
+
     void stopMotor(uint8_t aStopMode = MOTOR_RELEASE); // resets CurrentSpeed, State nad TargetDistanceCount variables
     void stopMotorAndReset(); // Shutdown and reset all control values and sets direction to forward
 
@@ -131,7 +149,7 @@ public:
      * Flags for display update control
      */
     volatile static bool EncoderTickCounterHasChanged;
-    static bool ValuesHaveChanged;
+    static bool MotorValuesHaveChanged;
 
     EncoderMotor * NextMotorControl;
 
@@ -148,7 +166,7 @@ public:
     uint8_t MinSpeed;
     uint8_t StopSpeed; // Minimum speed to approach target count in order to be able to stop fast - currently set to MinSpeed
 
-    uint8_t MaxSpeed; // Maximum speed, set manually - TODO 0xFF should be working
+    uint8_t MaxSpeed; // Maximum speed for go distance, set only from EEPROM value
 
     /*
      * Positive value to be subtracted from TargetSpeed to get CurrentSpeed to compensate for different left and right motors
@@ -166,7 +184,7 @@ public:
     uint8_t CurrentSpeed;
     uint8_t CurrentDirection; // (of CurrentSpeed etc.) DIRECTION_FORWARD, DIRECTION_BACKWARD
     volatile int16_t CurrentVelocity;
-    uint8_t CurrentMaxSpeed; // The MaxSpeed used for current movement. Can be set for eg. turning which better performs with reduced MaxSpeed
+    uint8_t CurrentMaxSpeed; // MaxSpeed - SpeedCompensation; The MaxSpeed used for current movement. Can be set for eg. turning which better performs with reduced MaxSpeed
 
     uint8_t State; // MOTOR_STATE_STOPPED, MOTOR_STATE_RAMP_UP, MOTOR_STATE_FULL_SPEED, MOTOR_STATE_RAMP_DOWN
     uint16_t TargetDistanceCount;

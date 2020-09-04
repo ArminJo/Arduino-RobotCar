@@ -11,11 +11,13 @@
  *  Copyright (C) 2019-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
@@ -24,26 +26,37 @@
 #include "RobotCarGui.h"
 
 BDButton TouchButtonStepMode;
+const char sStepModeButtonStringContinuousStepToTurn[] PROGMEM = "Continuous\n->\nStep to turn";
+const char sStepModeButtonStringStepToTurnSingleStep[] PROGMEM = "Step to turn\n->\nSingle step";
+const char sStepModeButtonStringSingleStepContinuous[] PROGMEM = "Single step\n->\nContinuous";
+const char * const sStepModeButtonCaptionStringArray[] PROGMEM = { sStepModeButtonStringContinuousStepToTurn,
+        sStepModeButtonStringStepToTurnSingleStep, sStepModeButtonStringSingleStepContinuous };
+
 BDButton TouchButtonStep;
 BDButton TouchButtonSingleScan;
 BDButton TouchButtonScanSpeed;
+
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 BDButton TouchButtonScanMode;
+const char sScanModeButtonStringMinMax[] PROGMEM = "Min->Max";
+const char sScanModeButtonStringMaxUS[] PROGMEM = "Max->US";
+#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
+const char sScanModeButtonStringUSIr[] PROGMEM = "US->IR";
+const char sScanModeButtonStringIrMin[] PROGMEM = "IR->Min";
+const char * const sScanModeButtonCaptionStringArray[] PROGMEM = { sScanModeButtonStringMinMax, sScanModeButtonStringMaxUS,
+        sScanModeButtonStringUSIr, sScanModeButtonStringIrMin };
+# else
+const char sScanModeButtonStringUSTof[] PROGMEM = "US->ToF";
+const char sScanModeButtonStringTofMin[] PROGMEM = "ToF->Min";
+
+const char * const sScanModeButtonCaptionStringArray[] PROGMEM = { sScanModeButtonStringMinMax, sScanModeButtonStringMaxUS,
+        sScanModeButtonStringUSTof, sScanModeButtonStringTofMin};
+#  endif
 #endif
 
-BDButton TouchButtonTestUser;
-BDButton TouchButtonBuiltInAutonomousDrive;
-
-uint8_t sStepMode = MODE_CONTINUOUS;
-bool sDoStep = false; // if true => do one step
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-uint8_t sScanMode = SCAN_MODE_BOTH;
-#endif
-
-bool sDoSlowScan = false;
-
-bool sRuningAutonomousDrive = false;
-bool sUseBuiltInAutonomousDriveStrategy = true;
+BDButton TouchButtonStartStopUserAutonomousDrive;
+BDButton TouchButtonStartStopBuiltInAutonomousDrive;
+BDButton TouchButtonFollower;
 
 void setStepModeButtonCaption();
 /*
@@ -62,6 +75,7 @@ void setStepMode(uint8_t aStepMode) {
     }
 }
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 void doNextStepMode(BDButton * aTheTouchedButton, int16_t aValue) {
     sStepMode++;
     setStepMode(sStepMode);
@@ -73,41 +87,30 @@ void doNextStepMode(BDButton * aTheTouchedButton, int16_t aValue) {
 void doStep(BDButton * aTheTouchedButton, int16_t aValue) {
     if (sStepMode == MODE_CONTINUOUS) {
         // switch to step mode MODE_SINGLE_STEP
-        setStepMode( MODE_SINGLE_STEP);
+        setStepMode(MODE_SINGLE_STEP);
     }
     sDoStep = true;
     /*
      * Start if not yet done
      */
-    if (!sRobotCarMoving) {
-        startStopAutomomousDrive(true, sUseBuiltInAutonomousDriveStrategy);
+    if (!sRuningAutonomousDrive) {
+        startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
     }
+}
+
+void setStepModeButtonCaption() {
+    TouchButtonStepMode.setCaptionFromStringArrayPGM(sStepModeButtonCaptionStringArray, sStepMode);
 }
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 void setScanModeButtonCaption() {
-    if (sScanMode == SCAN_MODE_BOTH) {
-        TouchButtonScanMode.setCaption(F("Both->US"));
-    } else if (sScanMode == SCAN_MODE_US)
-#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
-    {
-        TouchButtonScanMode.setCaption(F("US->IR"));
-    } else {
-        TouchButtonScanMode.setCaption(F("IR->Both"));
-    }
-# else
-    {
-        TouchButtonScanMode.setCaption(F("US->ToF"));
-    } else {
-        TouchButtonScanMode.setCaption(F("ToF->Both"));
-    }
-#  endif
+    TouchButtonScanMode.setCaptionFromStringArrayPGM(sScanModeButtonCaptionStringArray, sScanMode);
 }
 
 void doScanMode(BDButton * aTheTouchedButton, int16_t aValue) {
     sScanMode++;
     if (sScanMode > SCAN_MODE_IR) {
-        sScanMode = SCAN_MODE_BOTH;
+        sScanMode = SCAN_MODE_MINIMUM;
     }
     setScanModeButtonCaption();
     TouchButtonScanMode.drawButton();
@@ -121,134 +124,160 @@ void doChangeScanSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
 
 void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
     clearPrintedForwardDistancesInfos();
-    fillAndShowForwardDistancesInfo(true, true);
+    fillAndShowForwardDistancesInfo(true, true, true);
+
     doWallDetection(true);
-    sNextDegreesToTurn = doBuiltInCollisionDetection();
+    if (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN) {
+        sNextDegreesToTurn = doBuiltInCollisionDetection();
+    } else {
+        sNextDegreesToTurn = doUserCollisionDetection();
+    }
     drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE, false);
 }
 
-void startStopAutomomousDrive(bool aDoStart, bool aUseBuiltInAutonomousDriveStrategy) {
+/*
+ * aDriveMode required if aDoStart is true otherwise sDriveMode = MODE_MANUAL_DRIVE;
+ */
+void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
     sRuningAutonomousDrive = aDoStart;
-    sUseBuiltInAutonomousDriveStrategy = aUseBuiltInAutonomousDriveStrategy;
-    /*
-     * Switch to right page. Needed for call from timeout condition.
-     */
-    if (sCurrentPage != PAGE_AUTOMATIC_CONTROL) {
-        GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL - sCurrentPage);
-    }
-    /*
-     *  manage buttons
-     */
-    bool tInternalAutonomousDrive = false;
-    bool tExternalAutonomousDrive = false;
+    noTone(PIN_SPEAKER); // for follower mode
+
     if (aDoStart) {
+        /*
+         * Start autonomous driving.
+         */
         resetPathData();
         sDoStep = true; // enable next step
-
-        // decide which button enabled on start
-        if (aUseBuiltInAutonomousDriveStrategy) {
-            tInternalAutonomousDrive = true;
-        } else {
+        sDriveMode = aDriveMode;
+        // decide which button called us
+        if (aDriveMode == MODE_AUTONOMOUS_DRIVE_USER) {
             /*
              * Own test always starts in mode SINGLE_STEP
              */
             setStepMode(MODE_SINGLE_STEP);
-            tExternalAutonomousDrive = true;
+        } else if (aDriveMode == MODE_FOLLOWER) {
+            DistanceServoWriteAndDelay(90); // reset Servo
+            clearPrintedForwardDistancesInfos();
+            SliderUSDistance.drawSlider();
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+            SliderIRDistance.drawSlider();
+#  endif
         }
-    }
-    TouchButtonBuiltInAutonomousDrive.setValueAndDraw(tInternalAutonomousDrive);
-    TouchButtonTestUser.setValueAndDraw(tExternalAutonomousDrive);
 
+    } else {
+        /*
+         * Stop autonomous driving.
+         */
+        if (sStepMode != MODE_SINGLE_STEP) {
+            // add last driven distance to path
+            insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
+        }
+        DistanceServoWriteAndDelay(90);
+        sDriveMode = MODE_MANUAL_DRIVE;
+    }
+    handleAutomomousDriveRadioButtons();
     startStopRobotCar(aDoStart);
 }
 
+void doStartStopFollowerMode(BDButton * aTheTouchedButton, int16_t aValue) {
+    startStopAutomomousDrive(aValue, MODE_FOLLOWER);
+}
+
 void doStartStopAutomomousDrive(BDButton * aTheTouchedButton, int16_t aValue) {
-    startStopAutomomousDrive(aValue, true);
+    startStopAutomomousDrive(aValue, MODE_AUTONOMOUS_DRIVE_BUILTIN);
 }
 
 void doStartStopTestUser(BDButton * aTheTouchedButton, int16_t aValue) {
-    startStopAutomomousDrive(aValue, false);
+    startStopAutomomousDrive(aValue, MODE_AUTONOMOUS_DRIVE_USER);
 }
 
-void setStepModeButtonCaption() {
-    if (sStepMode == MODE_CONTINUOUS) {
-        TouchButtonStepMode.setCaption(F("Continuous\n->\nStep to turn"));
-    } else if (sStepMode == MODE_STEP_TO_NEXT_TURN) {
-        TouchButtonStepMode.setCaption(F("Step to turn\n->\nSingle step"));
-    } else {
-        TouchButtonStepMode.setCaption(F("Single step\n->\nContinuous"));
-    }
+/*
+ * set buttons accordingly to sDriveMode
+ */
+void handleAutomomousDriveRadioButtons() {
+    TouchButtonStartStopBuiltInAutonomousDrive.setValue(sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN,
+            sCurrentPage == PAGE_AUTOMATIC_CONTROL);
+    TouchButtonStartStopUserAutonomousDrive.setValue(sDriveMode == MODE_AUTONOMOUS_DRIVE_USER,
+            sCurrentPage == PAGE_AUTOMATIC_CONTROL);
+    TouchButtonFollower.setValue(sDriveMode == MODE_FOLLOWER, sCurrentPage == PAGE_AUTOMATIC_CONTROL);
 }
 
 void initAutonomousDrivePage(void) {
-    TouchButtonStepMode.init(0, 0, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, "", TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0,
-            &doNextStepMode);
-    setStepModeButtonCaption();
+    TouchButtonStepMode.init(0, 0, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_6 + 1, COLOR_BLUE,
+            reinterpret_cast<const __FlashStringHelper *>(sStepModeButtonStringContinuousStepToTurn), TEXT_SIZE_9,
+            FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doNextStepMode);
 
-    TouchButtonSingleScan.init(0, BUTTON_HEIGHT_4_LINE_2, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, F("Scan"),
+    TouchButtonSingleScan.init(0, BUTTON_HEIGHT_6_LINE_2, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_6, COLOR_BLUE, F("Scan"),
     TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doSingleScan);
+
+    TouchButtonStep.init(0, BUTTON_HEIGHT_6_LINE_3, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_6, COLOR_BLUE, F("Step"),
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doStep);
+
+    // use sDriveMode for reconnect during demo mode
+    TouchButtonFollower.init(0, BUTTON_HEIGHT_6_LINE_4, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_6, COLOR_RED, F("Follow"),
+    TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, (sDriveMode == MODE_FOLLOWER),
+            &doStartStopFollowerMode);
 
     TouchButtonScanSpeed.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
     BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_BLACK, F("Scan slow"), TEXT_SIZE_16,
-            FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sDoSlowScan, &doChangeScanSpeed);
+            FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doChangeScanSpeed);
     TouchButtonScanSpeed.setCaptionForValueTrue("Scan fast");
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     TouchButtonScanMode.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER),
-    BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_RED, "", TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doScanMode);
-    setScanModeButtonCaption();
+    BUTTON_WIDTH_3, TEXT_SIZE_22_HEIGHT, COLOR_RED, reinterpret_cast<const __FlashStringHelper *>(sScanModeButtonStringMinMax),
+    TEXT_SIZE_16, FLAG_BUTTON_DO_BEEP_ON_TOUCH, SCAN_MODE_MINIMUM, &doScanMode);
 #endif
 
-    TouchButtonStep.init(0, BUTTON_HEIGHT_4_LINE_3, BUTTON_WIDTH_3_5, BUTTON_HEIGHT_4, COLOR_BLUE, F("Step"),
-    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doStep);
+    // use sDriveMode for reconnect during demo mode
+    TouchButtonStartStopBuiltInAutonomousDrive.init(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
+            F("Start\nBuiltin"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN,
+            (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN), &doStartStopAutomomousDrive);
+    TouchButtonStartStopBuiltInAutonomousDrive.setCaptionForValueTrue(F("Stop"));
 
-    TouchButtonBuiltInAutonomousDrive.init(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
-            F("Start\nBuiltin"),
-            TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN,
-            sRuningAutonomousDrive && sUseBuiltInAutonomousDriveStrategy, &doStartStopAutomomousDrive);
-    TouchButtonBuiltInAutonomousDrive.setCaptionForValueTrue(F("Stop"));
-
-    TouchButtonTestUser.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED,
-            F("Start\nUser"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN,
-            sRuningAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy, &doStartStopTestUser);
-    TouchButtonTestUser.setCaptionForValueTrue(F("Stop\nUser"));
+    TouchButtonStartStopUserAutonomousDrive.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
+    COLOR_RED, F("Start\nUser"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false,
+            &doStartStopTestUser);
+    TouchButtonStartStopUserAutonomousDrive.setCaptionForValueTrue(F("Stop\nUser"));
 
 }
 
 void drawAutonomousDrivePage(void) {
     drawCommonGui();
 
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Auto drive"));
+    BlueDisplay1.drawText(HEADER_X - (TEXT_SIZE_22_WIDTH / 2), (2 * TEXT_SIZE_22_HEIGHT), F("Auto drive"));
 
     TouchButtonBackSmall.drawButton();
 
     TouchButtonStepMode.drawButton();
     TouchButtonSingleScan.drawButton();
     TouchButtonStep.drawButton();
+    TouchButtonFollower.drawButton();
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     TouchButtonScanMode.drawButton();
 #endif
     TouchButtonScanSpeed.drawButton();
 
-    TouchButtonBuiltInAutonomousDrive.drawButton();
-    TouchButtonTestUser.drawButton();
-    TouchButtonNextPage.drawButton();
+    TouchButtonStartStopBuiltInAutonomousDrive.drawButton();
+    TouchButtonStartStopUserAutonomousDrive.drawButton();
+    TouchButtonNextPage.drawButton(); // Show Path button
 }
 
 void startAutonomousDrivePage(void) {
-    TouchButtonTestUser.setValue(sRuningAutonomousDrive && !sUseBuiltInAutonomousDriveStrategy);
-    TouchButtonBuiltInAutonomousDrive.setValue(sRuningAutonomousDrive && sUseBuiltInAutonomousDriveStrategy);
+    TouchButtonStartStopUserAutonomousDrive.setValue(sDriveMode == MODE_AUTONOMOUS_DRIVE_USER);
+    TouchButtonStartStopBuiltInAutonomousDrive.setValue(sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN);
     setStepModeButtonCaption();
-
-    TouchButtonBackSmall.setPosition(BUTTON_WIDTH_4_POS_4, 0);
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+    setScanModeButtonCaption();
+#endif
     TouchButtonNextPage.setCaption(F("Show\nPath"));
 
     drawAutonomousDrivePage();
 }
 
 void loopAutonomousDrivePage(void) {
-// nothing to do exclusively for this page
+// Autonomous driving is done in an extra loop in AutonomousDrive.cpp -> doAutonomousDrive(), since it is independent of the display.
 }
 
 void stopAutonomousDrivePage(void) {
@@ -257,10 +286,12 @@ void stopAutonomousDrivePage(void) {
 
 /*
  * Clear drawing area
+ * X from TouchButtonStep to end of display
+ * Y from TouchButtonBackSmall to TouchButtonScanSpeed
  */
 void clearPrintedForwardDistancesInfos() {
-    BlueDisplay1.fillRectRel(US_DISTANCE_MAP_ORIGIN_X - US_DISTANCE_MAP_WIDTH_HALF,
-    US_DISTANCE_MAP_ORIGIN_Y - US_DISTANCE_MAP_HEIGHT, US_DISTANCE_MAP_WIDTH_HALF * 2, US_DISTANCE_MAP_HEIGHT + 2, COLOR_WHITE);
+    BlueDisplay1.fillRect(BUTTON_WIDTH_3_5 + 1, BUTTON_HEIGHT_4 + 1, LAYOUT_320_WIDTH,
+    BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - 1, COLOR_WHITE);
 }
 
 /*
@@ -268,7 +299,7 @@ void clearPrintedForwardDistancesInfos() {
  */
 void drawForwardDistancesInfos() {
     color16_t tColor;
-    uint8_t tActualDegrees = 0;
+    uint8_t tCurrentDegrees = 0;
     /*
      * Clear drawing area
      */
@@ -292,8 +323,8 @@ void drawForwardDistancesInfos() {
         /*
          * Draw line
          */
-        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tActualDegrees, tColor, 3);
-        tActualDegrees += DEGREES_PER_STEP;
+        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
+        tCurrentDegrees += DEGREES_PER_STEP;
     }
     doWallDetection(true);
 }
@@ -314,8 +345,8 @@ void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoC
         if (!aDoClear) {
             sprintf_P(sStringBuffer, PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sForwardDistancesInfo.WallLeftAngleDegrees,
                     aDegreeToTurn, sForwardDistancesInfo.WallRightAngleDegrees); // \xB0 is degree character
-            BlueDisplay1.drawText(US_DISTANCE_MAP_ORIGIN_X - US_DISTANCE_MAP_WIDTH_HALF, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11,
-                    sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+            BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sStringBuffer, TEXT_SIZE_11,
+                    COLOR_BLACK, COLOR_WHITE);
         }
     }
 }

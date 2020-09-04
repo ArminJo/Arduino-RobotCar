@@ -13,11 +13,13 @@
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
@@ -35,10 +37,10 @@ BDButton TouchButtonNextPage;
 BDButton TouchButtonCalibrate;
 
 BDButton TouchButtonRobotCarStartStop;
-bool sRobotCarMoving; // main start flag. If true motors are running
+//bool sRobotCarMoving; // main start flag. If true motors are running and will be updated by main loop.
 
 BDButton TouchButtonDirection;
-uint8_t sRobotCarDirection; // DIRECTION_FORWARD or DIRECTION_BACKWARD
+uint8_t sRobotCarDirection = DIRECTION_FORWARD; // DIRECTION_FORWARD or DIRECTION_BACKWARD
 
 BDSlider SliderSpeed;
 uint16_t sLastSpeedSliderValue = 0; // local storage for requested speed by speed slider
@@ -66,7 +68,7 @@ void setupGUI(void) {
 
     // Register callback handler and check for connection
     // This leads to call to initDisplay() and startCurrentPage() after connect
-    BlueDisplay1.initCommunication(&initDisplay, &startCurrentPage);
+    BlueDisplay1.initCommunication(&initRobotCarDisplay, &startCurrentPage);
 }
 
 void delayAndLoopGUI(uint16_t aDelayMillis) {
@@ -89,6 +91,8 @@ void loopGUI(void) {
             loopHomePage();
         } else if (sCurrentPage == PAGE_TEST) {
             loopTestPage();
+//        } else if (sCurrentPage == PAGE_FOLLOWER) {
+//            loopFollowerModePage();
         } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
             loopAutonomousDrivePage();
         } else if (sCurrentPage == PAGE_SHOW_PATH) {
@@ -121,17 +125,25 @@ void loopGUI(void) {
  * Handle Start/Stop
  */
 void startStopRobotCar(bool aRobotCarIsMoving) {
-    sRobotCarMoving = aRobotCarIsMoving;
-    TouchButtonRobotCarStartStop.setValue(aRobotCarIsMoving,sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST);
-
+    // set button in the case we are called by another than Stop button callback
+    TouchButtonRobotCarStartStop.setValue(aRobotCarIsMoving, sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST);
 
     uint8_t tSpeedSliderValue;
-    if (sRobotCarMoving) {
-        // Start car to last speed slider value
-        RobotCarMotorControl.setSpeedCompensated(sLastSpeedSliderValue);
+    if (aRobotCarIsMoving) {
+        if (sLastSpeedSliderValue > 0) {
+            /*
+             * Start car to last speed slider value
+             */
+            RobotCarMotorControl.setCurrentSpeedCompensated(sLastSpeedSliderValue, sRobotCarDirection);
+        }
         tSpeedSliderValue = sLastSpeedSliderValue;
     } else {
-        // Stop car
+        /*
+         * Stop car
+         */
+        if (sRuningAutonomousDrive) {
+            startStopAutomomousDrive(false);
+        }
         RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
         tSpeedSliderValue = 0;
     }
@@ -141,8 +153,8 @@ void startStopRobotCar(bool aRobotCarIsMoving) {
     }
 }
 
-void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aValue) {
-    startStopRobotCar(!sRobotCarMoving);
+void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aRobotCarIsMoving) {
+    startStopRobotCar(aRobotCarIsMoving);
 }
 
 void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -159,10 +171,10 @@ void doSpeedSlider(BDSlider * aTheTouchedSlider, uint16_t aValue) {
     if (aValue != sLastSpeedSliderValue) {
         sLastSpeedSliderValue = aValue;
 
-        if (!sRobotCarMoving) {
+        if (RobotCarMotorControl.isStopped()) {
             startStopRobotCar(true);
         }
-        RobotCarMotorControl.setSpeedCompensated(aValue);
+        RobotCarMotorControl.setCurrentSpeedCompensated(aValue, sRobotCarDirection);
     }
 }
 
@@ -179,7 +191,7 @@ void displayVelocitySliderValues() {
     uint16_t tXPos = 0;
     for (int i = 0; i < 2; ++i) {
         if (EncoderMotor::EncoderTickCounterHasChanged) {
-            tSliderPtr->setActualValueAndDrawBar(tMotorInfo->CurrentVelocity);
+            tSliderPtr->setValueAndDrawBar(tMotorInfo->CurrentVelocity);
         }
         tMotorInfo = &rightEncoderMotor;
         tSliderPtr = &SliderSpeedRight;
@@ -190,23 +202,15 @@ void displayVelocitySliderValues() {
 /*
  * Stops car and change direction
  */
-void doChangeDirection(BDButton * aTheTouchedButton, int16_t aValue) {
-    sRobotCarDirection = changeDIRECTION(sRobotCarDirection);
-    setDirectionButtonCaption();
-    TouchButtonDirection.drawButton();
-    if (sRobotCarMoving) {
-        startStopRobotCar(false);
-    }
-}
+void doSetDirection(BDButton * aTheTouchedButton, int16_t aValue) {
+    sRobotCarDirection = !aValue; // use inverse value since true is forward BUT 0 is DIRECTION_FORWARD
 
-void setDirectionButtonCaption() {
-    if (sRobotCarDirection == DIRECTION_FORWARD) {
-// direction forward
-        TouchButtonDirection.setCaption("\x87");
-    } else {
-// direction backward
-        TouchButtonDirection.setCaption("\x88");
+// Stop fixed directions and turns using RobotCarMotorControl
+    if (!RobotCarMotorControl.isStopped()) {
+        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
     }
+// Stop direct movement by slider
+    startStopRobotCar(false);
 }
 
 void startCurrentPage() {
@@ -223,8 +227,12 @@ void startCurrentPage() {
     case PAGE_TEST:
         startTestPage();
         break;
+//    case PAGE_FOLLOWER:
+//        startFollowerModePage();
+//        break;
     }
 }
+
 /*
  * For Next and Back button
  * Stop old page and start new one
@@ -247,15 +255,19 @@ void GUISwitchPages(BDButton * aTheTouchedButton, int16_t aValue) {
         break;
     case PAGE_TEST:
         stopTestPage();
-        aValue = -3; // only back to home permitted
+        aValue = PAGE_HOME - PAGE_TEST; // only back to home permitted
         break;
+//    case PAGE_FOLLOWER:
+//        stopFollowerModePage();
+//        aValue = PAGE_AUTOMATIC_CONTROL - PAGE_FOLLOWER; // only back to PAGE_AUTOMATIC_CONTROL permitted
+//        break;
     }
 
     /*
      * determine next page
      */
     sCurrentPage += aValue;
-    // handle overflow and unsigned underflow
+// handle overflow and unsigned underflow
     if (sCurrentPage > PAGE_LAST_NUMBER) {
         sCurrentPage = PAGE_HOME;
     }
@@ -268,19 +280,22 @@ void GUISwitchPages(BDButton * aTheTouchedButton, int16_t aValue) {
     startCurrentPage();
 }
 
-void initDisplay(void) {
+void initRobotCarDisplay(void) {
+// Stop any demo movement.
+    startStopRobotCar(false);
+
     BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_TOUCH_BASIC_DISABLE | BD_FLAG_USE_MAX_SIZE, DISPLAY_WIDTH,
     DISPLAY_HEIGHT);
     BlueDisplay1.setCharacterMapping(0x87, 0x2227); // mapping for AND - Forward
     BlueDisplay1.setCharacterMapping(0x88, 0x2228); // mapping for OR - Backwards
-    // Lock to landscape layout
+// Lock to landscape layout
     BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE);
 
     /*
      * Common control buttons
      */
     TouchButtonRobotCarStartStop.init(0, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_BLUE, F("Start"),
-    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sRobotCarMoving, &doRobotCarStartStop);
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doRobotCarStartStop);
     TouchButtonRobotCarStartStop.setCaptionForValueTrue(F("Stop"));
 
     TouchButtonNextPage.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, "",
@@ -289,21 +304,21 @@ void initDisplay(void) {
     TouchButtonBack.init(BUTTON_WIDTH_3_POS_3, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR_RED, F("Back"),
     TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -1, &GUISwitchPages);
 
-    TouchButtonBackSmall.init(BUTTON_WIDTH_4_POS_4, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_4, COLOR_RED, F("Back"), TEXT_SIZE_22,
+    TouchButtonBackSmall.init(BUTTON_WIDTH_4_POS_4, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_6, COLOR_RED, F("Back"), TEXT_SIZE_22,
             FLAG_BUTTON_DO_BEEP_ON_TOUCH, -1, &GUISwitchPages);
 
     TouchButtonCalibrate.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED, F("CAL"),
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 1, &doCalibrate);
 
-    // Direction
-    TouchButtonDirection.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, "",
-    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, !sRobotCarDirection, &doChangeDirection);
-    setDirectionButtonCaption();
+// Direction Button value true is forward, false is backward BUT 0 is DIRECTION_FORWARD!!!
+    TouchButtonDirection.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLACK, F("\x88"),
+    TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, true, &doSetDirection);
+    TouchButtonDirection.setCaptionForValueTrue("\x87");
 
     /*
      * Speed Sliders
      */
-    SliderSpeed.init(0, 10, BUTTON_WIDTH_6, SPEED_SLIDER_SIZE, 200, 0, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
+    SliderSpeed.init(0, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, SPEED_SLIDER_SIZE, 200, 0, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE, &doSpeedSlider);
     SliderSpeed.setScaleFactor(255.0 / SPEED_SLIDER_SIZE); // Slider is virtually 2 times larger than displayed, values were divided by 2
 
@@ -319,8 +334,8 @@ void initDisplay(void) {
     /*
      * scaled (0 to 180) US Sliders
      */
-    SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, 10, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW, SLIDER_DEFAULT_BAR_COLOR,
-            FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
+    SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
+    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
     SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
     SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
     SliderUSPosition.setValueUnitString("\xB0"); // \xB0 is degree character
@@ -329,37 +344,48 @@ void initDisplay(void) {
     /*
      * Two thin sliders with captions and without cm units
      */
-    SliderIRDistance.init((BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10) - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE,
-    DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+    SliderIRDistance.init((BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10) - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+    DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    // Small US distance slider left of SliderUSPosition
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+    DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+
     SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
+    SliderUSDistance.setScaleFactor(2);
+
     SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-    SliderIRDistance.setCaptionProperties(10, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
+    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+
+    // Caption properties
+    SliderIRDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
     COLOR_WHITE);
+    SliderUSDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
+    COLOR_WHITE);
+
+    // Captions
     SliderIRDistance.setCaption("IR");
-    // value below caption
+    SliderUSDistance.setCaption("US");
+
+    // Value properties
+// value below caption - right aligned
     SliderIRDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW,
             4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
-
-    // Small US distance slider
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, 10, (BUTTON_WIDTH_10 / 2) - 2, US_SLIDER_SIZE,
-    DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
-            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-    SliderUSDistance.setCaptionProperties(10, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
-    COLOR_WHITE);
-    SliderUSDistance.setCaption("US");
-    // below caption
+    // below caption - left aligned
     SliderUSDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW,
             4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
+
 #else
-    // Big US distance slider
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, 10, BUTTON_WIDTH_10, US_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0,
-    SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    // Big US distance slider with cm units
+    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, BUTTON_WIDTH_10,
+            DISTANCE_SLIDER_SIZE,
+            DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
     SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
     SliderUSDistance.setValueUnitString("cm");
 #endif
-    SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
-    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
 
     initHomePage();
     initTestPage();
@@ -368,12 +394,9 @@ void initDisplay(void) {
 }
 
 void drawCommonGui(void) {
-    BlueDisplay1.clearDisplay();
+    clearDisplayAndDisableButtonsAndSliders();
 
-    BlueDisplay1.deactivateAllButtons();
-    BlueDisplay1.deactivateAllSliders();
-
-    BlueDisplay1.drawText(BUTTON_WIDTH_10_POS_4, TEXT_SIZE_22_HEIGHT, F("Robot Car"), TEXT_SIZE_22, COLOR_BLUE,
+    BlueDisplay1.drawText(HEADER_X, TEXT_SIZE_22_HEIGHT, F("Robot Car"), TEXT_SIZE_22, COLOR_BLUE,
     COLOR_NO_BACKGROUND);
 }
 
@@ -381,35 +404,42 @@ void drawCommonGui(void) {
  * Print VIN (used as motor supply) periodically
  * returns true if voltage was printed
  */
+void readAndPrintVin() {
+    char tDataBuffer[18];
+    char tVCCString[6];
+    readVINVoltage();
+    dtostrf(sVINVoltage, 4, 2, tVCCString);
+    sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
+    uint16_t tPosX;
+    uint8_t tPosY;
+    if (sCurrentPage == PAGE_HOME) {
+        tPosX = BUTTON_WIDTH_8_POS_4;
+        tPosY = BUTTON_HEIGHT_8_LINE_6 - TEXT_SIZE_11_DECEND;
+//    } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL || sCurrentPage == PAGE_FOLLOWER) {
+    } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
+        tPosX = BUTTON_WIDTH_3_POS_2 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
+        tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+    } else {
+        // Test page
+        tPosX = BUTTON_WIDTH_3_POS_3 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
+        tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+    }
+    BlueDisplay1.drawText(tPosX, tPosY, tDataBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+
+}
+
 void readAndPrintVinPeriodically() {
     uint32_t tMillis = millis();
 
     if (tMillis >= sMillisOfNextVCCInfo) {
         sMillisOfNextVCCInfo = tMillis + PRINT_VOLTAGE_PERIOD_MILLIS;
-        char tDataBuffer[18];
-        char tVCCString[6];
-        readVINVoltage();
-        dtostrf(sVINVoltage, 4, 2, tVCCString);
-        sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
-        uint16_t tPosX;
-        uint8_t tPosY;
-        if (sCurrentPage == PAGE_HOME) {
-            tPosX = BUTTON_WIDTH_8_POS_4;
-            tPosY = BUTTON_HEIGHT_8_LINE_6 - TEXT_SIZE_11_DECEND;
-        } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-            tPosX = BUTTON_WIDTH_3_POS_2 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
-            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
-        } else {
-            // Test page
-            tPosX = BUTTON_WIDTH_3_POS_3 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
-            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
-        }
-        BlueDisplay1.drawText(tPosX, tPosY, tDataBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+        readAndPrintVin();
     }
 }
 
 void printMotorValues() {
 
+// position below caption of speed slider
     uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 25 + TEXT_SIZE_11_HEIGHT;
     sprintf_P(sStringBuffer, PSTR("min. %3d %3d"), leftEncoderMotor.MinSpeed, rightEncoderMotor.MinSpeed);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
@@ -421,9 +451,36 @@ void printMotorValues() {
     sprintf_P(sStringBuffer, PSTR("comp. %2d  %2d"), leftEncoderMotor.SpeedCompensation, rightEncoderMotor.SpeedCompensation);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("act. %3d %3d"), leftEncoderMotor.CurrentSpeed, rightEncoderMotor.CurrentSpeed);
+    sprintf_P(sStringBuffer, PSTR("speed%3d %3d"), leftEncoderMotor.CurrentSpeed, rightEncoderMotor.CurrentSpeed);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 
+}
+
+/*
+ * Is called after printMotorValues, so we can take the Draw parameter from it
+ */
+void printMotorDebugValues() {
+    /*
+     * Debug info
+     */
+    uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 25 + TEXT_SIZE_11_HEIGHT + (4 * TEXT_SIZE_11);
+    sprintf_P(sStringBuffer, PSTR("ramp1%3d %3d"), leftEncoderMotor.DistanceCountAfterRampUp,
+            rightEncoderMotor.DistanceCountAfterRampUp);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
+    tYPos += TEXT_SIZE_11;
+    sprintf_P(sStringBuffer, PSTR("endSp%3d %3d"), leftEncoderMotor.SpeedAtTargetCountReached,
+            rightEncoderMotor.SpeedAtTargetCountReached);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
+    tYPos += TEXT_SIZE_11;
+    sprintf_P(sStringBuffer, PSTR("debug%3d %3d"), leftEncoderMotor.Debug, rightEncoderMotor.Debug);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
+    tYPos += TEXT_SIZE_11;
+    sprintf_P(sStringBuffer, PSTR("dcnt %3d %3d"), leftEncoderMotor.DebugCount, rightEncoderMotor.DebugCount);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
+    tYPos += TEXT_SIZE_11;
+    sprintf_P(sStringBuffer, PSTR("tcnt %3d %3d"), leftEncoderMotor.LastTargetDistanceCount,
+            rightEncoderMotor.LastTargetDistanceCount);
+    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 }
 
 void printDistanceValues() {
@@ -433,8 +490,7 @@ void printDistanceValues() {
     } else {
         tYPos = SPEED_SLIDER_SIZE / 2 + 25;
     }
-    sprintf_P(sStringBuffer, PSTR("%4d %4d%3d"), leftEncoderMotor.EncoderCount, rightEncoderMotor.EncoderCount,
-            sCentimeterPerScanTimesTwo);
+    sprintf_P(sStringBuffer, PSTR("cnt.%4d%4d"), leftEncoderMotor.EncoderCount, rightEncoderMotor.EncoderCount);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
 }
 

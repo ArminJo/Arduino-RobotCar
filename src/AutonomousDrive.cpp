@@ -10,11 +10,13 @@
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
@@ -28,20 +30,201 @@
 #include "HCSR04.h"
 #include "Distance.h"
 
+uint8_t sDriveMode = MODE_MANUAL_DRIVE; // one of MODE_MANUAL_DRIVE, MODE_AUTONOMOUS_DRIVE_BUILTIN, MODE_AUTONOMOUS_DRIVE_USER or MODE_FOLLOWER
+
+uint8_t sStepMode = MODE_CONTINUOUS; // one ofMODE_CONTINUOUS,  MODE_STEP_TO_NEXT_TURN or MODE_SINGLE_STEP
+bool sDoStep = false; // if true => do one step
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+uint8_t sScanMode = SCAN_MODE_MINIMUM; // one of SCAN_MODE_MINIMUM, SCAN_MODE_MAXIMUM, SCAN_MODE_US or SCAN_MODE_IR
+#endif
+
+bool sDoSlowScan = false;
+bool sRuningAutonomousDrive = false; // = (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN || sDriveMode == MODE_AUTONOMOUS_DRIVE_USER || sDriveMode == MODE_FOLLOWER) is modified by buttons on this page
+
 ForwardDistancesInfoStruct sForwardDistancesInfo;
 
 Servo DistanceServo;
 uint8_t sLastServoAngleInDegrees; // 0 - 180 needed for optimized delay for servo repositioning
+
+uint8_t sTurnMode = TURN_IN_PLACE;
 
 // Storage for turning decision especially for single step mode
 int sNextDegreesToTurn = 0;
 // Storage of last turning for insertToPath()
 int sLastDegreesTurned = 0;
 
-uint8_t sTurnMode = TURN_IN_PLACE;
-
-uint8_t sCentimeterPerScanTimesTwo = CENTIMETER_PER_RIDE * 2; // = encoder counts per scan
+uint8_t sCentimeterPerScanTimesTwo = CENTIMETER_PER_RIDE * 2; // = encoder counts per US scan in autonomous mode
 uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE;
+
+/*
+ * Do one step of autonomous driving
+ * Compute sNextDegreesToTurn AFTER the movement to be able to stop before next turn
+ * 1. Check for step conditions if step should happen
+ */
+void driveAutonomousOneStep() {
+
+    /*
+     * 1. Check step conditions if step should happen
+     */
+    if (sDoStep || sStepMode == MODE_CONTINUOUS || (sStepMode == MODE_STEP_TO_NEXT_TURN && (!RobotCarMotorControl.isStopped()))) {
+        /*
+         * Do one step
+         */
+        bool tMovementJustStarted = sDoStep; // tMovementJustStarted is needed for speeding up US scanning by skipping first scan angle if not just started.
+        sDoStep = false; // Now it can be set again by GUI
+
+        /*
+         * Turn and start car if needed
+         */
+        int tLastDisplayedDegreeToTurn = sNextDegreesToTurn; // store value for drawCollisionDecision() below
+        if (sStepMode == MODE_SINGLE_STEP) {
+            /*
+             * SINGLE_STEP -> optional turn and go fixed distance
+             * Do not turn after movement to enable analysis of turn decision
+             */
+            if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
+                // go backwards
+                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
+            } else {
+                // rotate
+                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
+                // wait to really stop after turning
+                delay(100);
+                sLastDegreesTurned = sNextDegreesToTurn;
+                sNextDegreesToTurn = 0;
+                // and go
+                RobotCarMotorControl.goDistanceCentimeter(CENTIMETER_PER_RIDE, &loopGUI);
+            }
+        } else if (RobotCarMotorControl.isStopped()) {
+            /*
+             * MODE_STEP_TO_NEXT_TURN one step -> rotate / go backwards and start
+             */
+            if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
+                // go backwards
+                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
+            } else {
+                // rotate
+                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
+                // wait to really stop after turning
+                delay(100);
+                sLastDegreesTurned = sNextDegreesToTurn;
+                sNextDegreesToTurn = 0;
+                // and go
+                RobotCarMotorControl.startCarAndWaitForFullSpeed();
+                tMovementJustStarted = true;
+            }
+        }
+
+        /*
+         * Here car is moving
+         */
+        uint16_t tStepStartDistanceCount = rightEncoderMotor.EncoderCount;
+        bool tCurrentPageIsAutomaticControl = (sCurrentPage == PAGE_AUTOMATIC_CONTROL);
+
+//Clear old decision marker by redrawing it with a white line
+        if (tCurrentPageIsAutomaticControl) {
+            drawCollisionDecision(tLastDisplayedDegreeToTurn, sCentimeterPerScan, true);
+        }
+
+        /*
+         * The magic happens HERE
+         * This runs as fast as possible and mainly determine the duration of one step
+         */
+        if (fillAndShowForwardDistancesInfo(tCurrentPageIsAutomaticControl, tMovementJustStarted)) {
+            // User canceled autonomous drive, ForwardDistancesInfo may be incomplete then
+            return;
+        }
+
+        doWallDetection(tCurrentPageIsAutomaticControl);
+        if (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN) {
+            sNextDegreesToTurn = doBuiltInCollisionDetection();
+        } else {
+            sNextDegreesToTurn = doUserCollisionDetection();
+        }
+        drawCollisionDecision(sNextDegreesToTurn, sCentimeterPerScan, false);
+
+        /*
+         * compute distance driven for one US scan
+         */
+        if (!RobotCarMotorControl.isStopped()) {
+            /*
+             * No stop here => distance is valid
+             */
+            sCentimeterPerScanTimesTwo = rightEncoderMotor.EncoderCount - tStepStartDistanceCount;
+            sCentimeterPerScan = sCentimeterPerScanTimesTwo / 2;
+            if (tCurrentPageIsAutomaticControl) {
+                char tStringBuffer[6];
+                sprintf_P(tStringBuffer, PSTR("%2d%s"), sCentimeterPerScan, "cm");
+                BlueDisplay1.drawText(0, BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND, tStringBuffer, TEXT_SIZE_11,
+                COLOR_BLACK, COLOR_WHITE);
+            }
+        }
+
+        /*
+         * Handle stop of car and path data
+         */
+        if ((sNextDegreesToTurn != 0 && sStepMode == MODE_STEP_TO_NEXT_TURN) || sStepMode == MODE_SINGLE_STEP) {
+            /*
+             * Stop if rotation requested or single step => insert / update last ride in path
+             */
+            RobotCarMotorControl.stopCarAndWaitForIt();
+            if (sStepMode == MODE_SINGLE_STEP) {
+                insertToPath(CENTIMETER_PER_RIDE * 2, sLastDegreesTurned, true);
+            } else {
+                // add last driven distance to path
+                insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
+            }
+        } else {
+            /*
+             * No stop, just continue => overwrite last path element with current riding distance and try to synchronize motors
+             */
+            insertToPath(rightEncoderMotor.EncoderCount, sLastDegreesTurned, false);
+            rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+        }
+
+        if (sCurrentPage == PAGE_SHOW_PATH) {
+            drawPathInfoPage();
+        }
+    }
+}
+
+unsigned int getDistanceAsCentiMeter() {
+#ifdef CAR_HAS_TOF_DISTANCE_SENSOR
+    if (sScanMode != SCAN_MODE_US) {
+        sToFDistanceSensor.startRanging();
+    }
+#endif
+
+    unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(DISTANCE_TIMEOUT_CM);
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+    unsigned int tIRCentimeter;
+    if (sScanMode != SCAN_MODE_US) {
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
+        if (sScanMode != SCAN_MODE_US) {
+            tIRCentimeter = getIRDistanceAsCentimeter();
+        }
+#  elif defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+        if (sScanMode != SCAN_MODE_US) {
+            tIRCentimeter = readToFDistanceAsCentimeter();
+        }
+#  endif
+        if (sScanMode == SCAN_MODE_IR) {
+            tCentimeter = tIRCentimeter;
+        } else if (sScanMode == SCAN_MODE_MINIMUM) {
+            // Scan mode MINIMUM => Take the minimum of the two values
+            if (tCentimeter > tIRCentimeter) {
+                tCentimeter = tIRCentimeter;
+            }
+        } else if (sScanMode == SCAN_MODE_MAXIMUM) {
+            // Scan mode MAXIMUM => Take the maximum of the two values
+            if (tCentimeter < tIRCentimeter) {
+                tCentimeter = tIRCentimeter;
+            }
+        }
+    }
+#endif
+    return tCentimeter;
+}
 
 void initDistanceServo() {
     DistanceServo.attach(PIN_DISTANCE_SERVO);
@@ -52,6 +235,7 @@ void initDistanceServo() {
 /*
  * sets also sLastServoAngleInDegrees to enable optimized servo movement and delays
  * SG90 Micro Servo has reached its end position if the current (200 mA) is low for more than 11 to 14 ms
+ * No action if aTargetDegrees == sLastServoAngleInDegrees
  */
 void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 
@@ -113,9 +297,7 @@ void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
         /*
          * Factor 8 gives a fairly reproducible US result, but some dropouts for IR
          * factor 7 gives some strange (to small) values for US.
-         *
          */
-// , factor 4 is a bit too fast, even 7 gives some strange values
         uint16_t tWaitDelayforServo;
         if (sDoSlowScan) {
             tWaitDelayforServo = tDeltaDegrees * 16; // 16 => 288 ms for 18 degrees
@@ -143,8 +325,11 @@ void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
  * If 2 or 3 adjacent values are quite short and the surrounding values are quite far,
  * then assume a wall which cannot reflect the pulse for the surrounding values.
  *
+ * aForceScan if true, do not return if sRuningAutonomousDrive is false / autonomous drive is stopped
+ *
+ * return true if user cancellation requested.
  */
-void __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, bool aDoFirstValue) {
+bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, bool aDoFirstValue, bool aForceScan) {
 
     color16_t tColor;
 
@@ -168,43 +353,23 @@ void __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, boo
 
     while (tIndex >= 0 && tIndex < NUMBER_OF_DISTANCES) {
         /*
-         * rotate servo, wait and get distance
+         * rotate servo, wait with delayAndLoopGUI() and get distance
          */
         DistanceServoWriteAndDelay(tCurrentDegrees, true);
-#ifdef CAR_HAS_TOF_DISTANCE_SENSOR
-        if (sScanMode == SCAN_MODE_BOTH || sScanMode == SCAN_MODE_IR) {
-            sToFDistanceSensor.startRanging();
+        if (!aForceScan && !sRuningAutonomousDrive) {
+            // User request to stop -> return now
+            return true;
         }
-#endif
 
-        unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(DISTANCE_TIMEOUT_CM);
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-        unsigned int tIRCentimeter;
-        if (sScanMode == SCAN_MODE_BOTH || sScanMode == SCAN_MODE_IR) {
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
-        tIRCentimeter = getIRDistanceAsCentimeter();
-#  elif defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-            tIRCentimeter = readToFDistanceAsCentimeter();
-#  endif
-            if (sScanMode == SCAN_MODE_IR) {
-                tCentimeter = tIRCentimeter;
-            } else {
-                // Scan mode BOTH => Take the minimum of the two values
-                if (tCentimeter > tIRCentimeter) {
-                    tCentimeter = tIRCentimeter;
-                }
-            }
-        }
-#endif
-        if (((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tCentimeter <= sCentimeterPerScanTimesTwo)
-                || (!sRuningAutonomousDrive)) {
+        unsigned int tCentimeter = getDistanceAsCentiMeter();
+        if ((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tCentimeter <= sCentimeterPerScanTimesTwo) {
             /*
-             * Emergency stop
+             * Emergency motor stop if index is forward and measured distance is less than distance driven during two scans
              */
             RobotCarMotorControl.stopCarAndWaitForIt();
         }
 
-        if (aShowValues) {
+        if (aShowValues && BlueDisplay1.isConnectionEstablished()) {
             /*
              * Determine color
              */
@@ -233,6 +398,7 @@ void __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, boo
         tIndex += tIndexDelta;
         tCurrentDegrees += tDegreeIncrement;
     }
+    return false;
 }
 
 /*
@@ -474,7 +640,7 @@ void doWallDetection(bool aShowValues) {
                         if (sForwardDistancesInfo.WallRightAngleDegrees < tWallBackwardDegrees) {
                             sForwardDistancesInfo.WallRightAngleDegrees = tWallBackwardDegrees;
 #ifdef TRACE
-                        BlueDisplay1.debug("WallRightAngleDegrees=", sForwardDistancesInfo.WallRightAngleDegrees);
+                            BlueDisplay1.debug("WallRightAngleDegrees=", sForwardDistancesInfo.WallRightAngleDegrees);
 #endif
                         }
                     } else if (sForwardDistancesInfo.WallLeftAngleDegrees < (180 - tWallBackwardDegrees)) {
@@ -503,7 +669,6 @@ void doWallDetection(bool aShowValues) {
     doPostProcess();
 }
 
-#define GO_BACK_AND_SCAN_AGAIN 360
 /*
  * Checks distances and returns degrees to turn
  * 0 -> no turn, > 0 -> turn left, < 0 -> turn right, > 360 go back, since too close to wall
@@ -566,7 +731,7 @@ int doBuiltInCollisionDetection() {
                 /*
                  * Go to max distance
                  */
-                tDegreeToTurn = sForwardDistancesInfo.IndexOfMaxDistance * DEGREES_PER_STEP - 90;
+                tDegreeToTurn = sForwardDistancesInfo.IndexOfMaxDistance * DEGREES_PER_STEP + START_DEGREES - 90;
             } else {
                 /*
                  * Max distances are all too short => must go back / turn by 180 degree
@@ -578,131 +743,84 @@ int doBuiltInCollisionDetection() {
     return tDegreeToTurn;
 }
 
-/*
- * Do one step of autonomous driving
- * Compute sNextDegreesToTurn AFTER the movement to be able to stop before next turn
- * 1. Check for step conditions if step should happen
- *
- */
-void driveAutonomousOneStep(int (*aCollisionDetectionFunction)()) {
+/***************************************************
+ * Code for follower mode
+ ***************************************************/
+bool sFoundTarget = false;
+
+unsigned int getDistanceAndPlayTone();
+
+void driveFollowerModeOneStep() {
+
+    unsigned int tCentimeter = getDistanceAndPlayTone();
 
     /*
-     * 1. Check for step conditions if step should happen
+     * check if distance too high, then search target in other direction
      */
-    if (sStepMode == MODE_CONTINUOUS || (sStepMode == MODE_SINGLE_STEP && sDoStep)
-            || (sStepMode == MODE_STEP_TO_NEXT_TURN && (!RobotCarMotorControl.isStopped() || sDoStep))) {
-        /*
-         * Do one step
-         */
-        bool tMovementJustStarted = sDoStep; // tMovementJustStarted is needed for speeding up US scanning by skipping first scan angle if not just started.
-        sDoStep = false; // Now it can be set again by GUI
-
-        /*
-         * Turn and start car if needed
-         */
-        int tLastDisplayedDegreeToTurn = sNextDegreesToTurn;
-        if (sStepMode == MODE_SINGLE_STEP) {
-            /*
-             * SINGLE_STEP -> optional turn and go fixed distance
-             * Do not turn after movement to enable analysis of turn decision
-             */
-            if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
-                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
-            } else {
-                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
-                // wait to really stop after turning
-                delay(100);
-                sLastDegreesTurned = sNextDegreesToTurn;
-                sNextDegreesToTurn = 0;
-                // and go
-                RobotCarMotorControl.goDistanceCentimeter(CENTIMETER_PER_RIDE, &loopGUI);
-            }
-        } else
-        /*
-         * Step of MODE_STEP_TO_NEXT_TURN or start of MODE_CONTINUOUS
-         * Rotate / go backwards and start
-         */
-        if (RobotCarMotorControl.isStopped()) {
-            if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
-                // go backwards
-                RobotCarMotorControl.goDistanceCentimeter(-10, &loopGUI);
-            } else {
-                // rotate
-                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode);
-                // wait to really stop after turning
-                delay(100);
-                sLastDegreesTurned = sNextDegreesToTurn;
-                sNextDegreesToTurn = 0;
-                // and go
-                RobotCarMotorControl.startCarAndWaitForFullSpeed();
-                tMovementJustStarted = true;
-            }
+    if (sFoundTarget && tCentimeter > FOLLOWER_RESCAN_DISTANCE) {
+        // Sto and get new distance info
+        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+        clearPrintedForwardDistancesInfos();
+        SliderUSDistance.drawSlider();
+        if (fillAndShowForwardDistancesInfo(true, true)) {
+            // User canceled autonomous drive, ForwardDistancesInfo may be incomplete then
+            return;
         }
+        sFoundTarget = false;
 
+        // reset distance servo to 90 degree
+        DistanceServoWriteAndDelay(90, false);
         /*
-         * Here car is moving
+         * Turn and go to min distance
          */
-
-        uint16_t tStepStartDistanceCount = rightEncoderMotor.EncoderCount;
-
-        bool tCurrentPageIsAutomaticControl = (sCurrentPage == PAGE_AUTOMATIC_CONTROL);
-
-//Clear old decision marker by redrawing it with a white line
-        if (tCurrentPageIsAutomaticControl) {
-            drawCollisionDecision(tLastDisplayedDegreeToTurn, sCentimeterPerScan, true);
-        }
-
-        /*
-         * The magic happens HERE
-         * This runs as fast as possible and mainly determine the duration of one step
-         */
-        fillAndShowForwardDistancesInfo(tCurrentPageIsAutomaticControl, tMovementJustStarted);
-        doWallDetection(tCurrentPageIsAutomaticControl);
-        sNextDegreesToTurn = aCollisionDetectionFunction();
-        drawCollisionDecision(sNextDegreesToTurn, sCentimeterPerScan, false);
-
-        /*
-         * compute distance driven for one US scan
-         */
-        if (!RobotCarMotorControl.isStopped()) {
-            /*
-             * No stop here => distance is valid
-             */
-            sCentimeterPerScanTimesTwo = rightEncoderMotor.EncoderCount - tStepStartDistanceCount;
-            sCentimeterPerScan = sCentimeterPerScanTimesTwo / 2;
-            if (tCurrentPageIsAutomaticControl) {
-                char tStringBuffer[6];
-                sprintf_P(tStringBuffer, PSTR("%2d%s"), sCentimeterPerScan, "cm");
-                BlueDisplay1.drawText(0, BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND, tStringBuffer, TEXT_SIZE_11,
-                COLOR_BLACK, COLOR_WHITE);
-            }
-        }
-
-        /*
-         * Handle stop of car and path data
-         */
-        if ((sNextDegreesToTurn != 0 && sStepMode == MODE_STEP_TO_NEXT_TURN) || sStepMode == MODE_SINGLE_STEP) {
-            /*
-             * Stop if rotation requested or single step => insert / update last ride in path
-             */
-            RobotCarMotorControl.stopCarAndWaitForIt();
-            if (sStepMode == MODE_SINGLE_STEP) {
-                insertToPath(CENTIMETER_PER_RIDE * 2, sLastDegreesTurned, true);
-            } else {
-                // add last driven distance to path
-                insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
-            }
-        } else {
-            /*
-             * No stop, just continue => overwrite last path element with current riding distance and try to synchronize motors
-             */
-            insertToPath(rightEncoderMotor.EncoderCount, sLastDegreesTurned, false);
-            rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
-        }
-
-        if (sCurrentPage == PAGE_SHOW_PATH) {
-            drawPathInfoPage();
-        }
+        int tDegreeToTurn = sForwardDistancesInfo.IndexOfMinDistance * DEGREES_PER_STEP + START_DEGREES - 90;
+        RobotCarMotorControl.rotateCar(tDegreeToTurn, TURN_IN_PLACE);
+        tCentimeter = sForwardDistancesInfo.MinDistance;
+        // Draw turn vector
+        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tDegreeToTurn + 90,
+        COLOR_BLACK);
+        // Print turn info
+        sprintf_P(sStringBuffer, PSTR("rotation:%3d\xB0 min:%2dcm"), tDegreeToTurn, tCentimeter); // \xB0 is degree character
+        BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11,
+                sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
     }
+
+    else if (tCentimeter > FOLLOWER_MAX_DISTANCE) {
+//        Serial.println(F("Go forward"));
+        RobotCarMotorControl.startCarAndWaitForFullSpeed();
+
+    } else if (tCentimeter < FOLLOWER_MIN_DISTANCE) {
+//        Serial.println(F("Go backward"));
+        RobotCarMotorControl.startCarAndWaitForFullSpeed(DIRECTION_BACKWARD);
+
+    } else {
+        sFoundTarget = true;
+//        Serial.println(F("Stop"));
+        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+    }
+
+    // show distance bars
+    checkAndShowDistancePeriodically(300);
+    delayAndLoopGUI(40); // the IR sensor takes 39 ms for one measurement
 }
 
+unsigned int __attribute__((weak)) getDistanceAndPlayTone() {
+    /*
+     * Get distance
+     */
+    unsigned int tCentimeter = getDistanceAsCentiMeter();
+
+#ifdef PLOTTER_OUTPUT
+    Serial.println(tCentimeter);
+#else
+    Serial.print("Distance=");
+    Serial.print(tCentimeter);
+    Serial.print("cm. ");
+#endif
+    /*
+     * play tone
+     */
+    int tFrequency = map(tCentimeter, 0, 100, 100, 2000);
+    tone(PIN_SPEAKER, tFrequency);
+    return tCentimeter;
+}

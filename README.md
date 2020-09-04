@@ -20,26 +20,26 @@ The (invalid) values 18 degrees right and left of these samples are then extrapo
 
 # Pictures
 2 wheel car
-![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/2WheelDriveCar.jpg)
+![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/2WheelDriveCar.jpg)
 4 wheel car
-![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/4WheelDriveCar.jpg)
+![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/4WheelDriveCar.jpg)
 Encoder fork sensor
-![Encoder fork sensor](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/ForkSensor.jpg)
+![Encoder fork sensor](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ForkSensor.jpg)
 Servo mounting
-![Servo mounting](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/ServoAtTopBack.jpg)
+![Servo mounting](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ServoAtTopBack.jpg)
 VIN sensing
-![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/SensingVIn.jpg)
+![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/SensingVIn.jpg)
 
 # SCREENSHOTS
 Start page
-![MStart page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/HomePage.png)
+![MStart page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/HomePage.png)
 Test page
-![Manual control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/TestPage.png)
+![Manual control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/TestPage.png)
 Automatic control page with detected wall at right
-![Automatic control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/media/AutoControlWithWallDetected.png)
-Green bars are distances above 1 meter or above double distance of one ride per scan whichever is less.
-Red bars are distanced below the distance of one ride per scan -> collision during next scan and ride cycle if obstacle is ahead.
-Orange bars are the values between the 2 thresholds.
-the tiny black bars are the distances computed by the doWallDetection() function. They override the green (assumed timeout) values.
-The tiny yellow bar is the rotation chosen by doCollisionDetection() function.
+![Automatic control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/AutoDrivePage.png)
+- Green bars are distances above 1 meter or above double distance of one ride per scan whichever is less.
+- Red bars are distanced below the distance of one ride per scan -> collision during next "scan and ride" cycle if obstacle is ahead.
+- Orange bars are the values between the 2 thresholds.
+- The tiny white bars are the distances computed by the doWallDetection() function. They overlay the green (assumed timeout) values.
+- The tiny black bar is the rotation chosen by doCollisionDetection() function.
 

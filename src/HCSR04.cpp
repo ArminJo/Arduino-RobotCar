@@ -93,6 +93,7 @@ unsigned int getUSDistance(unsigned int aTimeoutMicros) {
 
 // need minimum 10 usec Trigger Pulse
     digitalWrite(sTriggerOutPin, HIGH);
+    // If in
 
     if (sHCSR04Mode == HCSR04_MODE_USE_1_PIN) {
         // do it AFTER digitalWrite to avoid spurious triggering by just switching pin to output
@@ -100,7 +101,7 @@ unsigned int getUSDistance(unsigned int aTimeoutMicros) {
     }
 
 #ifdef DEBUG
-    delay(2); // to see it on scope
+    delayMicroseconds(100); // to see it on scope
 #else
     delayMicroseconds(10);
 #endif
@@ -127,7 +128,7 @@ unsigned int getUSDistance(unsigned int aTimeoutMicros) {
      * Only thing is that the pulse ends when we are in an interrupt routine, thus prolonging the measured pulse duration.
      * Alternatively we can use pulseIn() in a noInterrupts() context, but this will effectively stop the millis() timer for duration of pulse / or timeout.
      */
-#if defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny87__) || defined(__AVR_ATtiny167__)
+#if ! defined(__AVR__) || defined(TEENSYDUINO) || defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny87__) || defined(__AVR_ATtiny167__)
     noInterrupts();
     unsigned long tUSPulseMicros = pulseIn(tEchoInPin, HIGH, aTimeoutMicros);
     interrupts();

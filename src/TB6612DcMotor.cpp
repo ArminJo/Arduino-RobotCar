@@ -1,21 +1,32 @@
 /*
  * TB6612Motor.cpp
  *
- *  Created on: 12.05.2019
- *      Author: Armin
+ * Low level Motor control for Adafruit_MotorShield OR breakout board with TB6612FNG / Driver IC for Dual DC motor
  *
- * Motor control has 2 technical dimensions
- * 1. Motor driver control. Can be FORWARD, BACKWARD (BRAKE motor connection are shortened) or RELEASE ( motor connections are high impedance)
- * 2. Speed / PWM which is ignored for BRAKE or RELEASE
+ * Motor control has 2 parameters:
+ * 1. Speed / PWM which is ignored for BRAKE or RELEASE. This library also accepts signed speed (including the direction as sign).
+ * 2. Direction / MotorDriverMode. Can be FORWARD, BACKWARD (BRAKE motor connection are shortened) or RELEASE ( motor connections are high impedance)
+ *
+ *  Created on: 12.05.2019
+ *  Copyright (C) 2016-2020  Armin Joachimsmeyer
+ *  armin.joachimsmeyer@gmail.com
+ *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
 #include <Arduino.h>
 
 #include "TB6612DcMotor.h"
 
-#ifdef USE_TB6612_BREAKOUT_BOARD
-#include "RobotCar.h" // for motor pin definitions
-#else
+#if ! defined(USE_TB6612_BREAKOUT_BOARD)
 // Create the motor shield object with the default I2C address
 Adafruit_MotorShield sAdafruitMotorShield = Adafruit_MotorShield();
 #endif
@@ -24,7 +35,7 @@ TB6612DcMotor::TB6612DcMotor() { // @suppress("Class members should be properly 
 }
 
 #ifdef USE_TB6612_BREAKOUT_BOARD
-TB6612DcMotor::TB6612DcMotor(uint8_t aForwardPin, uint8_t aBackwardPin, uint8_t aPWMPin) {
+void TB6612DcMotor::init(uint8_t aForwardPin, uint8_t aBackwardPin, uint8_t aPWMPin) {
     ForwardPin = aForwardPin;
     BackwardPin = aBackwardPin;
     PWMPin = aPWMPin;
@@ -34,33 +45,16 @@ TB6612DcMotor::TB6612DcMotor(uint8_t aForwardPin, uint8_t aBackwardPin, uint8_t 
     pinMode(aBackwardPin, OUTPUT);
     pinMode(aPWMPin, OUTPUT);
 }
-#endif
 
+#else
 /*
  * aMotorNumber from 0 to 3
  */
 void TB6612DcMotor::init(uint8_t aMotorNumber) {
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    if (aMotorNumber == 0) {
-        ForwardPin = PIN_MOTOR_0_FORWARD;
-        BackwardPin = PIN_MOTOR_0_BACKWARD;
-        PWMPin = PIN_MOTOR_0_PWM;
-    } else {
-        ForwardPin = PIN_MOTOR_1_FORWARD;
-        BackwardPin = PIN_MOTOR_1_BACKWARD;
-        PWMPin = PIN_MOTOR_1_PWM;
-    }
 
-    StopMode = MOTOR_RELEASE;
-
-    pinMode(ForwardPin, OUTPUT);
-    pinMode(BackwardPin, OUTPUT);
-    pinMode(PWMPin, OUTPUT);
-#else
     Adafruit_MotorShield_DcMotor = sAdafruitMotorShield.getMotor(aMotorNumber + 1);
     sAdafruitMotorShield.begin();
-#endif
-}
+}#endif
 
 /*
  *  @brief  Control the DC motor driver direction and stop mode
@@ -128,6 +122,7 @@ void TB6612DcMotor::setSpeed(int aSpeedRequested) {
 
 /*
  * First set PWM to 0 then disable driver
+ * aStopMode can be: MOTOR_BRAKE or MOTOR_RELEASE
  */
 void TB6612DcMotor::stop(uint8_t aStopMode) {
 #ifdef USE_TB6612_BREAKOUT_BOARD
@@ -135,9 +130,9 @@ void TB6612DcMotor::stop(uint8_t aStopMode) {
 #else
     Adafruit_MotorShield_DcMotor->setSpeed(0);
 #endif
-    setMotorDriverMode(CheckStopMODE(StopMode));
+    setMotorDriverMode(CheckStopMODE(aStopMode));
 }
 
 void TB6612DcMotor::setStopMode(uint8_t aStopMode) {
-    StopMode = CheckStopMODE(StopMode);
+    StopMode = CheckStopMODE(aStopMode);
 }

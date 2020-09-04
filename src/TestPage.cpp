@@ -9,11 +9,13 @@
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
+ *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
@@ -46,11 +48,9 @@ bool sShowDebug = false;
 
 const int sGetDistancePeriod = 500;
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 void doDistance(BDButton * aTheTouchedButton, int16_t aValue) {
-    if (sRobotCarDirection == DIRECTION_BACKWARD) {
-        aValue = -aValue;
-    }
-    RobotCarMotorControl.initGoDistanceCentimeter(aValue);
+    RobotCarMotorControl.initGoDistanceCentimeter(aValue, sRobotCarDirection);
 }
 
 void doShowDebug(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -62,7 +62,7 @@ void doRotation(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 /*
- * Store CurrentSpeed as MaxSpeed
+ * Store user speed input as MaxSpeed
  */
 void doStoreSpeed(float aValue) {
     uint16_t tValue = aValue;
@@ -82,7 +82,7 @@ void doStoreSpeed(float aValue) {
  * Request speed value as number
  */
 void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
-    BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Speed [11 - 255]", sLastSpeedSliderValue);
+    BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Max speed [11-255]", sLastSpeedSliderValue);
 }
 
 /*
@@ -101,11 +101,12 @@ void initTestPage(void) {
     TouchButtonReset.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
     COLOR_BLUE, F("Reset"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset);
 
-    TouchButtonGetAndStoreSpeed.init(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_8_LINE_2 + 1, BUTTON_WIDTH_6, BUTTON_HEIGHT_8,
-    COLOR_BLUE, F("Store"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doGetSpeedAsNumber);
+    TouchButtonGetAndStoreSpeed.init(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_6 - BUTTON_DEFAULT_SPACING_QUARTER, BUTTON_WIDTH_6,
+    BUTTON_HEIGHT_6, COLOR_BLUE, F("Set\nspeed"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doGetSpeedAsNumber);
 
     /*
      * Test buttons
+     * Many calls requires 36 bytes code + sometimes 52 bytes to clean up the stack.
      */
     TouchButton5cm.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE, F("5cm"),
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 5, &doDistance);
@@ -120,17 +121,18 @@ void initTestPage(void) {
     TouchButton45DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
             F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation); // \xB0 is degree character
     TouchButton45DegreeRight.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation); // \xB0 is degree character
+            F("-45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation); // \xB0 is degree character
 
     TouchButton90DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
             F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 90, &doRotation); // \xB0 is degree character
     TouchButton90DegreeRight.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
-            F("90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation); // \xB0 is degree character
+            F("-90\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation); // \xB0 is degree character
+
     TouchButton360Degree.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLUE,
             F("360\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 360, &doRotation); // \xB0 is degree character
 
     TouchButtonDebug.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED, F("dbg"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sShowDebug, &doShowDebug);
+    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doShowDebug);
 }
 
 void drawTestPage(void) {
@@ -186,8 +188,8 @@ void loopTestPage(void) {
 
     checkAndShowDistancePeriodically(sGetDistancePeriod);
 
-    if (EncoderMotor::ValuesHaveChanged) {
-        EncoderMotor::ValuesHaveChanged = false;
+    if (EncoderMotor::MotorValuesHaveChanged) {
+        EncoderMotor::MotorValuesHaveChanged = false;
         printMotorValues();
         if (sShowDebug) {
             printMotorDebugValues();
@@ -200,32 +202,3 @@ void loopTestPage(void) {
 
 void stopTestPage(void) {
 }
-
-/*
- * Is called after printMotorValues, so we can take the Draw parameter from it
- */
-void printMotorDebugValues() {
-    /*
-     * Debug info
-     */
-    uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 70;
-    sprintf_P(sStringBuffer, PSTR("ramp1%3d %3d"), leftEncoderMotor.DistanceCountAfterRampUp,
-            rightEncoderMotor.DistanceCountAfterRampUp);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-    tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("endSp%3d %3d"), leftEncoderMotor.SpeedAtTargetCountReached,
-            rightEncoderMotor.SpeedAtTargetCountReached);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-    tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("debug%3d %3d"), leftEncoderMotor.Debug, rightEncoderMotor.Debug);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-    tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("dcnt %3d %3d"), leftEncoderMotor.DebugCount, rightEncoderMotor.DebugCount);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-
-    tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("tcnt %3d %3d"), leftEncoderMotor.LastTargetDistanceCount,
-            rightEncoderMotor.LastTargetDistanceCount);
-    BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-}
-
