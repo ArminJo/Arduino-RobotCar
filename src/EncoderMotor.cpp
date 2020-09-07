@@ -311,7 +311,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
                 if (aOtherMotorControl->SpeedCompensation >= 2) {
                     aOtherMotorControl->SpeedCompensation -= 2;
                     aOtherMotorControl->CurrentSpeed += 2;
-                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed);
+                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed, CurrentDirection);
                     MotorValuesHaveChanged = true;
                     EncoderCount = aOtherMotorControl->EncoderCount;
                 } else if (CurrentSpeed > MinSpeed) {
@@ -320,7 +320,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
                      */
                     SpeedCompensation += 2;
                     CurrentSpeed -= 2;
-                    TB6612DcMotor::setSpeed(CurrentSpeed);
+                    TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
                     MotorValuesHaveChanged = true;
                 }
 
@@ -332,7 +332,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
                 if (SpeedCompensation >= 2) {
                     SpeedCompensation -= 2;
                     CurrentSpeed += 2;
-                    TB6612DcMotor::setSpeed(CurrentSpeed);
+                    TB6612DcMotor::setSpeed(CurrentSpeed, CurrentDirection);
                     MotorValuesHaveChanged = true;
                 } else if (aOtherMotorControl->CurrentSpeed > aOtherMotorControl->MinSpeed) {
                     /*
@@ -340,7 +340,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
                      */
                     aOtherMotorControl->SpeedCompensation += 2;
                     aOtherMotorControl->CurrentSpeed -= 2;
-                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed);
+                    aOtherMotorControl->setSpeed(aOtherMotorControl->CurrentSpeed, CurrentDirection);
                     MotorValuesHaveChanged = true;
                 }
             }
@@ -356,7 +356,7 @@ void EncoderMotor::synchronizeMotor(EncoderMotor * aOtherMotorControl, uint16_t 
  * generates a rising ramp and detects the first movement -> this sets dead band / minimum Speed
  */
 void EncoderMotor::calibrate() {
-    stopAllMotorsAndreset();
+    stopAllMotorsAndReset();
     bool endLoop;
     EncoderMotor * tEncoderMotorControlPointer;
     tEncoderMotorControlPointer = sMotorControlListStart;
@@ -374,7 +374,7 @@ void EncoderMotor::calibrate() {
 // walk through list
         while (tEncoderMotorControlPointer != NULL) {
             if (tEncoderMotorControlPointer->MinSpeed == 0) {
-                tEncoderMotorControlPointer->setSpeed(tSpeed);
+                tEncoderMotorControlPointer->setSpeed(tSpeed, DIRECTION_FORWARD);
                 tEncoderMotorControlPointer->CurrentSpeed = tSpeed;
             }
             tEncoderMotorControlPointer = tEncoderMotorControlPointer->NextMotorControl;
@@ -471,6 +471,11 @@ void EncoderMotor::writeEeprom() {
 
 void EncoderMotor::setSpeed(int aRequestedSpeed) {
     TB6612DcMotor::setSpeed(aRequestedSpeed); // output PWM value to motor
+}
+
+
+void EncoderMotor::setSpeed(int aRequestedSpeed, uint8_t aRequestedDirection) {
+    TB6612DcMotor::setSpeed(aRequestedSpeed, aRequestedDirection); // output PWM value to motor
 }
 
 void EncoderMotor::setCurrentSpeedCompensated(uint8_t aRequestedSpeed, uint8_t aRequestedDirection) {
@@ -702,7 +707,7 @@ void EncoderMotor::stopAllMotorsAndWaitUntilStopped() {
     }
 }
 
-void EncoderMotor::stopAllMotorsAndreset() {
+void EncoderMotor::stopAllMotorsAndReset() {
     EncoderMotor * tEncoderMotorControlPointer = sMotorControlListStart;
 // walk through list
     while (tEncoderMotorControlPointer != NULL) {

@@ -41,10 +41,7 @@ uint8_t sScanMode = SCAN_MODE_MINIMUM; // one of SCAN_MODE_MINIMUM, SCAN_MODE_MA
 bool sDoSlowScan = false;
 bool sRuningAutonomousDrive = false; // = (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN || sDriveMode == MODE_AUTONOMOUS_DRIVE_USER || sDriveMode == MODE_FOLLOWER) is modified by buttons on this page
 
-ForwardDistancesInfoStruct sForwardDistancesInfo;
-
-Servo DistanceServo;
-uint8_t sLastServoAngleInDegrees; // 0 - 180 needed for optimized delay for servo repositioning
+bool sFoundFollowerTarget = false;
 
 uint8_t sTurnMode = TURN_IN_PLACE;
 
@@ -55,6 +52,62 @@ int sLastDegreesTurned = 0;
 
 uint8_t sCentimeterPerScanTimesTwo = CENTIMETER_PER_RIDE * 2; // = encoder counts per US scan in autonomous mode
 uint8_t sCentimeterPerScan = CENTIMETER_PER_RIDE;
+
+/*
+ * aDriveMode required if aDoStart is true otherwise sDriveMode = MODE_MANUAL_DRIVE;
+ */
+void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
+    sRuningAutonomousDrive = aDoStart;
+    noTone(PIN_SPEAKER); // for follower mode
+
+    if (aDoStart) {
+        /*
+         * Start autonomous driving.
+         */
+        resetPathData();
+        clearPrintedForwardDistancesInfos();
+        sDoStep = true; // enable next step
+        sDriveMode = aDriveMode;
+        // decide which button called us
+        if (aDriveMode == MODE_AUTONOMOUS_DRIVE_USER) {
+            /*
+             * Own test always starts in mode SINGLE_STEP
+             */
+            setStepMode(MODE_SINGLE_STEP);
+        } else if (aDriveMode == MODE_FOLLOWER) {
+            DistanceServoWriteAndDelay(90); // reset Servo
+            SliderUSDistance.drawSlider();
+            sFoundFollowerTarget = false;
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+            SliderIRDistance.drawSlider();
+#  endif
+        }
+
+    } else {
+        /*
+         * Stop autonomous driving.
+         */
+        if (sStepMode != MODE_SINGLE_STEP) {
+            // add last driven distance to path
+            insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
+        }
+        DistanceServoWriteAndDelay(90);
+        sDriveMode = MODE_MANUAL_DRIVE;
+    }
+    handleAutomomousDriveRadioButtons();
+    startStopRobotCar(aDoStart);
+}
+
+void postProcessAndCollisionDetection() {
+    doWallDetection();
+    postProcessDistances();
+    if (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN) {
+        sNextDegreesToTurn = doBuiltInCollisionDetection();
+    } else {
+        sNextDegreesToTurn = doUserCollisionDetection();
+    }
+    drawCollisionDecision(sNextDegreesToTurn, sCentimeterPerScan, false);
+}
 
 /*
  * Do one step of autonomous driving
@@ -121,27 +174,18 @@ void driveAutonomousOneStep() {
         uint16_t tStepStartDistanceCount = rightEncoderMotor.EncoderCount;
         bool tCurrentPageIsAutomaticControl = (sCurrentPage == PAGE_AUTOMATIC_CONTROL);
 
-//Clear old decision marker by redrawing it with a white line
-        if (tCurrentPageIsAutomaticControl) {
-            drawCollisionDecision(tLastDisplayedDegreeToTurn, sCentimeterPerScan, true);
-        }
-
         /*
          * The magic happens HERE
          * This runs as fast as possible and mainly determine the duration of one step
          */
-        if (fillAndShowForwardDistancesInfo(tCurrentPageIsAutomaticControl, tMovementJustStarted)) {
+        if (fillAndShowForwardDistancesInfo(tMovementJustStarted)) {
             // User canceled autonomous drive, ForwardDistancesInfo may be incomplete then
             return;
         }
 
-        doWallDetection(tCurrentPageIsAutomaticControl);
-        if (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN) {
-            sNextDegreesToTurn = doBuiltInCollisionDetection();
-        } else {
-            sNextDegreesToTurn = doUserCollisionDetection();
-        }
-        drawCollisionDecision(sNextDegreesToTurn, sCentimeterPerScan, false);
+        //Clear old decision marker by redrawing it with a white line
+        drawCollisionDecision(tLastDisplayedDegreeToTurn, sCentimeterPerScan, true);
+        postProcessAndCollisionDetection();
 
         /*
          * compute distance driven for one US scan
@@ -184,245 +228,6 @@ void driveAutonomousOneStep() {
 
         if (sCurrentPage == PAGE_SHOW_PATH) {
             drawPathInfoPage();
-        }
-    }
-}
-
-unsigned int getDistanceAsCentiMeter() {
-#ifdef CAR_HAS_TOF_DISTANCE_SENSOR
-    if (sScanMode != SCAN_MODE_US) {
-        sToFDistanceSensor.startRanging();
-    }
-#endif
-
-    unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(DISTANCE_TIMEOUT_CM);
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-    unsigned int tIRCentimeter;
-    if (sScanMode != SCAN_MODE_US) {
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
-        if (sScanMode != SCAN_MODE_US) {
-            tIRCentimeter = getIRDistanceAsCentimeter();
-        }
-#  elif defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-        if (sScanMode != SCAN_MODE_US) {
-            tIRCentimeter = readToFDistanceAsCentimeter();
-        }
-#  endif
-        if (sScanMode == SCAN_MODE_IR) {
-            tCentimeter = tIRCentimeter;
-        } else if (sScanMode == SCAN_MODE_MINIMUM) {
-            // Scan mode MINIMUM => Take the minimum of the two values
-            if (tCentimeter > tIRCentimeter) {
-                tCentimeter = tIRCentimeter;
-            }
-        } else if (sScanMode == SCAN_MODE_MAXIMUM) {
-            // Scan mode MAXIMUM => Take the maximum of the two values
-            if (tCentimeter < tIRCentimeter) {
-                tCentimeter = tIRCentimeter;
-            }
-        }
-    }
-#endif
-    return tCentimeter;
-}
-
-void initDistanceServo() {
-    DistanceServo.attach(PIN_DISTANCE_SERVO);
-    DistanceServoWriteAndDelay(90);
-}
-
-//#define USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-/*
- * sets also sLastServoAngleInDegrees to enable optimized servo movement and delays
- * SG90 Micro Servo has reached its end position if the current (200 mA) is low for more than 11 to 14 ms
- * No action if aTargetDegrees == sLastServoAngleInDegrees
- */
-void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
-
-    if (aTargetDegrees > 220) {
-        // handle underflow
-        aTargetDegrees = 0;
-    } else if (aTargetDegrees > 180) {
-        // handle underflow
-        aTargetDegrees = 180;
-    }
-
-    uint8_t tDeltaDegrees;
-#ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-    int8_t tOvershootDegrees; // Experimental
-#endif
-    uint8_t tLastServoAngleInDegrees = sLastServoAngleInDegrees;
-    sLastServoAngleInDegrees = aTargetDegrees;
-
-    if (tLastServoAngleInDegrees == aTargetDegrees) {
-        return;
-    } else if (aTargetDegrees > tLastServoAngleInDegrees) {
-        tDeltaDegrees = aTargetDegrees - tLastServoAngleInDegrees;
-#ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-        tOvershootDegrees = 3; // Experimental
-#endif
-    } else {
-        tDeltaDegrees = tLastServoAngleInDegrees - aTargetDegrees;
-#ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-        tOvershootDegrees = -3; // Experimental
-#endif
-    }
-
-#ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-    /*
-     * Experimental!
-     * Compensate (set target to more degrees) for fast servo speed
-     * Reasonable value is between 2 and 3 at 20 degrees and tWaitDelayforServo = tDeltaDegrees * 5
-     * Reasonable value is between 10 and 20 degrees and tWaitDelayforServo = tDeltaDegrees * 4 => avoid it
-     */
-    if (!sDoSlowScan) {
-        aTargetDegrees += tOvershootDegrees;
-    }
-#endif
-
-    // My servo is top down and therefore inverted
-    aTargetDegrees = 180 - aTargetDegrees;
-    DistanceServo.write(aTargetDegrees);
-    if (doDelay) {
-// Synchronize before doing delay
-        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
-// Datasheet says: SG90 Micro Servo needs 100 millis per 60 degrees angle => 300 ms per 180
-// I measured: SG90 Micro Servo needs 400 per 180 degrees and 400 per 2*90 degree, but 540 millis per 9*20 degree
-// 60-80 ms for 20 degrees
-
-//        // wait at least 5 ms for the servo to receive signal
-//        delay(SERVO_INITIAL_DELAY);
-//        digitalWrite(DEBUG_OUT_PIN, LOW);
-
-        /*
-         * Factor 8 gives a fairly reproducible US result, but some dropouts for IR
-         * factor 7 gives some strange (to small) values for US.
-         */
-        uint16_t tWaitDelayforServo;
-        if (sDoSlowScan) {
-            tWaitDelayforServo = tDeltaDegrees * 16; // 16 => 288 ms for 18 degrees
-        } else {
-#ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
-            tWaitDelayforServo = tDeltaDegrees * 5;
-#else
-#  ifdef CAR_HAS_IR_DISTANCE_SENSOR
-            tWaitDelayforServo = tDeltaDegrees * 9; // 9 => 162 ms for 18 degrees
-#  else
-            tWaitDelayforServo = tDeltaDegrees * 8; // 7 => 128 ms, 8 => 144 for 18 degrees
-#  endif
-#endif
-        }
-        delayAndLoopGUI(tWaitDelayforServo);
-    }
-}
-
-/*
- * Get 7 distances starting at 9 degrees (right) increasing by 18 degrees up to 171 degrees (left)
- * Avoid 0 and 180 degrees since at this position the US sensor might see the wheels of the car as an obstacle.
- * @param aDoFirstValue if false, skip first value since it is the same as last value of last measurement in continuous mode.
- *
- * Wall detection:
- * If 2 or 3 adjacent values are quite short and the surrounding values are quite far,
- * then assume a wall which cannot reflect the pulse for the surrounding values.
- *
- * aForceScan if true, do not return if sRuningAutonomousDrive is false / autonomous drive is stopped
- *
- * return true if user cancellation requested.
- */
-bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aShowValues, bool aDoFirstValue, bool aForceScan) {
-
-    color16_t tColor;
-
-// Values for forward scanning
-    uint8_t tCurrentDegrees = START_DEGREES;
-    int8_t tDegreeIncrement = DEGREES_PER_STEP;
-    int8_t tIndex = 0;
-    int8_t tIndexDelta = 1;
-    if (sLastServoAngleInDegrees >= 170) {
-// values for backward scanning
-        tCurrentDegrees = 180 - START_DEGREES;
-        tDegreeIncrement = -(tDegreeIncrement);
-        tIndex = STEPS_PER_SCAN;
-        tIndexDelta = -1;
-    }
-    if (!aDoFirstValue) {
-// skip first value, since it is equal to last value of last measurement
-        tIndex += tIndexDelta;
-        tCurrentDegrees += tDegreeIncrement;
-    }
-
-    while (tIndex >= 0 && tIndex < NUMBER_OF_DISTANCES) {
-        /*
-         * rotate servo, wait with delayAndLoopGUI() and get distance
-         */
-        DistanceServoWriteAndDelay(tCurrentDegrees, true);
-        if (!aForceScan && !sRuningAutonomousDrive) {
-            // User request to stop -> return now
-            return true;
-        }
-
-        unsigned int tCentimeter = getDistanceAsCentiMeter();
-        if ((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tCentimeter <= sCentimeterPerScanTimesTwo) {
-            /*
-             * Emergency motor stop if index is forward and measured distance is less than distance driven during two scans
-             */
-            RobotCarMotorControl.stopCarAndWaitForIt();
-        }
-
-        if (aShowValues && BlueDisplay1.isConnectionEstablished()) {
-            /*
-             * Determine color
-             */
-            tColor = COLOR_RED; // tCentimeter <= sCentimeterPerScan
-            if (tCentimeter >= DISTANCE_TIMEOUT_CM) {
-                tColor = DISTANCE_TIMEOUT_COLOR;
-            } else if (tCentimeter > sCentimeterPerScanTimesTwo) {
-                tColor = COLOR_GREEN;
-            } else if (tCentimeter > sCentimeterPerScan) {
-                tColor = COLOR_YELLOW;
-            }
-
-            /*
-             * Clear old and draw new line
-             */
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
-                    sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR_WHITE, 3);
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
-                    3);
-        }
-        /*
-         * Store value and search for min and max
-         */
-        sForwardDistancesInfo.RawDistancesArray[tIndex] = tCentimeter;
-
-        tIndex += tIndexDelta;
-        tCurrentDegrees += tDegreeIncrement;
-    }
-    return false;
-}
-
-/*
- * Find min and max value. Prefer the headmost value if we have more than one choice
- */
-void doPostProcess() {
-    unsigned int tMax = 0;
-    unsigned int tMin = __UINT16_MAX__; // = 65535
-    for (uint8_t i = 0; i < (NUMBER_OF_DISTANCES + 1) / 2; ++i) {
-        uint8_t tDistance = sForwardDistancesInfo.ProcessedDistancesArray[i];
-        uint8_t tIndex = i;
-        for (int j = 0; j < 2; ++j) {
-            if (tDistance >= tMax) {
-                tMax = tDistance;
-                sForwardDistancesInfo.IndexOfMaxDistance = tIndex;
-                sForwardDistancesInfo.MaxDistance = tDistance;
-            }
-            if (tDistance <= tMin) {
-                tMin = tDistance;
-                sForwardDistancesInfo.IndexOfMinDistance = tIndex;
-                sForwardDistancesInfo.MinDistance = tDistance;
-            }
-            tIndex = STEPS_PER_SCAN - i;
-            tDistance = sForwardDistancesInfo.ProcessedDistancesArray[tIndex];
         }
     }
 }
@@ -514,7 +319,7 @@ uint8_t computeNeigbourValue(uint8_t aDegreesPerStepValue, uint8_t a2DegreesPerS
  * The (invalid) values 18 degrees right and left of these samples are then extrapolated by computeNeigbourValue().
  */
 //#define TRACE // only used for this function
-void doWallDetection(bool aShowValues) {
+void doWallDetection() {
     uint8_t tTempDistancesArray[NUMBER_OF_DISTANCES];
     /*
      * First copy all raw values
@@ -580,7 +385,7 @@ void doWallDetection(bool aShowValues) {
                 // store and draw adjusted value
                 tTempDistancesArray[i + 1] = tNextDistanceComputed;
                 tNextDistanceOriginal = tNextDistanceComputed;
-                if (aShowValues) {
+                if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
                     BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
                             tCurrentAngleToCheck, COLOR_WHITE, 1);
                 }
@@ -654,7 +459,7 @@ void doWallDetection(bool aShowValues) {
                     //Adjust and draw next value if original value is greater
                     sForwardDistancesInfo.ProcessedDistancesArray[i - 1] = tNextValueComputed;
                     tNextValue = tNextValueComputed;
-                    if (aShowValues) {
+                    if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
                         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
                                 tCurrentAngleToCheck, COLOR_WHITE, 1);
                     }
@@ -666,7 +471,6 @@ void doWallDetection(bool aShowValues) {
         tCurrentAngleToCheck -= DEGREES_PER_STEP;
 
     }
-    doPostProcess();
 }
 
 /*
@@ -731,7 +535,7 @@ int doBuiltInCollisionDetection() {
                 /*
                  * Go to max distance
                  */
-                tDegreeToTurn = sForwardDistancesInfo.IndexOfMaxDistance * DEGREES_PER_STEP + START_DEGREES - 90;
+                tDegreeToTurn = ((sForwardDistancesInfo.IndexOfMaxDistance * DEGREES_PER_STEP) + START_DEGREES) - 90;
             } else {
                 /*
                  * Max distances are all too short => must go back / turn by 180 degree
@@ -746,8 +550,6 @@ int doBuiltInCollisionDetection() {
 /***************************************************
  * Code for follower mode
  ***************************************************/
-bool sFoundTarget = false;
-
 unsigned int getDistanceAndPlayTone();
 
 void driveFollowerModeOneStep() {
@@ -757,16 +559,14 @@ void driveFollowerModeOneStep() {
     /*
      * check if distance too high, then search target in other direction
      */
-    if (sFoundTarget && tCentimeter > FOLLOWER_RESCAN_DISTANCE) {
+    if (sFoundFollowerTarget && tCentimeter > FOLLOWER_RESCAN_DISTANCE) {
         // Sto and get new distance info
         RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
-        clearPrintedForwardDistancesInfos();
-        SliderUSDistance.drawSlider();
-        if (fillAndShowForwardDistancesInfo(true, true)) {
+        if (fillAndShowForwardDistancesInfo(true)) {
             // User canceled autonomous drive, ForwardDistancesInfo may be incomplete then
             return;
         }
-        sFoundTarget = false;
+        sFoundFollowerTarget = false;
 
         // reset distance servo to 90 degree
         DistanceServoWriteAndDelay(90, false);
@@ -781,8 +581,8 @@ void driveFollowerModeOneStep() {
         COLOR_BLACK);
         // Print turn info
         sprintf_P(sStringBuffer, PSTR("rotation:%3d\xB0 min:%2dcm"), tDegreeToTurn, tCentimeter); // \xB0 is degree character
-        BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11,
-                sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
+        BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sStringBuffer, TEXT_SIZE_11,
+        COLOR_BLACK, COLOR_WHITE);
     }
 
     else if (tCentimeter > FOLLOWER_MAX_DISTANCE) {
@@ -794,7 +594,7 @@ void driveFollowerModeOneStep() {
         RobotCarMotorControl.startCarAndWaitForFullSpeed(DIRECTION_BACKWARD);
 
     } else {
-        sFoundTarget = true;
+        sFoundFollowerTarget = true;
 //        Serial.println(F("Stop"));
         RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
     }

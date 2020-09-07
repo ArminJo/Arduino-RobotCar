@@ -26,6 +26,7 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 // a string buffer for BD info output
 char sStringBuffer[128];
@@ -83,16 +84,10 @@ void loopGUI(void) {
     // do not show anything during motor speed ramps
     if (RobotCarMotorControl.isState(MOTOR_STATE_STOPPED) || RobotCarMotorControl.isState(MOTOR_STATE_FULL_SPEED)) {
 
-        /*
-         * Display changed values in GUI only at manual page
-         */
-
         if (sCurrentPage == PAGE_HOME) {
             loopHomePage();
         } else if (sCurrentPage == PAGE_TEST) {
             loopTestPage();
-//        } else if (sCurrentPage == PAGE_FOLLOWER) {
-//            loopFollowerModePage();
         } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
             loopAutonomousDrivePage();
         } else if (sCurrentPage == PAGE_SHOW_PATH) {
@@ -101,7 +96,21 @@ void loopGUI(void) {
 
         // for all but PathInfo page
         if (sCurrentPage != PAGE_SHOW_PATH) {
+            readCheckAndPrintVinPeriodically();
+
+            // For Home and Test page
             if (sCurrentPage != PAGE_AUTOMATIC_CONTROL) {
+                displayVelocitySliderValues();
+                checkAndShowDistancePeriodically(DISTANCE_DISPLAY_PERIOD_MILLIS);
+
+                if (EncoderMotor::MotorValuesHaveChanged) {
+                    EncoderMotor::MotorValuesHaveChanged = false;
+                    printMotorValues();
+                    if (sShowDebug && sCurrentPage == PAGE_TEST) {
+                        printMotorDebugValues();
+                    }
+                }
+
                 /*
                  * Print changed tick values
                  */
@@ -110,7 +119,6 @@ void loopGUI(void) {
                     printDistanceValues();
                 }
             }
-            readAndPrintVinPeriodically();
         }
     }
 
@@ -152,6 +160,8 @@ void startStopRobotCar(bool aRobotCarIsMoving) {
         SliderSpeed.setValueAndDrawBar(tSpeedSliderValue);
     }
 }
+
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aRobotCarIsMoving) {
     startStopRobotCar(aRobotCarIsMoving);
@@ -227,9 +237,6 @@ void startCurrentPage() {
     case PAGE_TEST:
         startTestPage();
         break;
-//    case PAGE_FOLLOWER:
-//        startFollowerModePage();
-//        break;
     }
 }
 
@@ -257,10 +264,6 @@ void GUISwitchPages(BDButton * aTheTouchedButton, int16_t aValue) {
         stopTestPage();
         aValue = PAGE_HOME - PAGE_TEST; // only back to home permitted
         break;
-//    case PAGE_FOLLOWER:
-//        stopFollowerModePage();
-//        aValue = PAGE_AUTOMATIC_CONTROL - PAGE_FOLLOWER; // only back to PAGE_AUTOMATIC_CONTROL permitted
-//        break;
     }
 
     /*
@@ -332,59 +335,96 @@ void initRobotCarDisplay(void) {
     SliderSpeedRight.setValueFormatString("%3d");
 
     /*
-     * scaled (0 to 180) US Sliders
+     * Right sliders
+     * From right to left:
+     * 1. Scaled (0 to 180) US position slider
+     * 2. Scaled (0 to 200) US distance slider. If IR distance or pan and tilt servos existent, the it is a small one without cm units.
+     * 3. Scaled (0 to 200) IR distance slider - small. Not displayed on home page if pan and tilt servos existent.
+     * 3. Pan position slider. If tilt servo is existent then at position 3.
+     * 4. Tilt position slider.
+     *
+     * Position X values determine the left edge
      */
-    SliderUSPosition.init(BUTTON_WIDTH_6_POS_6, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
+#define POS_X_US_POSITION_SLIDER    BUTTON_WIDTH_6_POS_6 // 280
+#define POS_X_US_DISTANCE_SLIDER    ((BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2))) // -14 -> 266
+#define POS_X_THIRD_SLIDER          (POS_X_US_DISTANCE_SLIDER - (BUTTON_WIDTH_10 / 2))  // -14 -> 252
+#if  defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)
+#define POS_X_PAN_SLIDER            (POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_12 - 2)  //
+#define POS_X_TILT_SLIDER           (POS_X_THIRD_SLIDER - BUTTON_WIDTH_6) // 208
+#else
+#define POS_X_PAN_SLIDER            (POS_X_THIRD_SLIDER - BUTTON_WIDTH_12 - 2)
+#endif
+
+    SliderUSPosition.init(POS_X_US_POSITION_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
     SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
     SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
     SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
     SliderUSPosition.setValueUnitString("\xB0"); // \xB0 is degree character
 
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR) || (defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO))
+#define US_DISTANCE_SLIDER_IS_SMALL
+#endif
     /*
-     * Two thin sliders with captions and without cm units
+     * One thin or thick US distance slider
      */
-    SliderIRDistance.init((BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10) - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+#if defined(US_DISTANCE_SLIDER_IS_SMALL)
+    // Small US distance slider with captions and without cm units
+    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
     DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-    // Small US distance slider left of SliderUSPosition
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2) - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
-    DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
-            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
-
-    SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
-    SliderUSDistance.setScaleFactor(2);
-
-    SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-    SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-
-    // Caption properties
-    SliderIRDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
-    COLOR_WHITE);
     SliderUSDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
     COLOR_WHITE);
-
-    // Captions
-    SliderIRDistance.setCaption("IR");
     SliderUSDistance.setCaption("US");
-
-    // Value properties
-// value below caption - right aligned
-    SliderIRDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW,
-            4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
     // below caption - left aligned
     SliderUSDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW,
             4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
-
 #else
-    // Big US distance slider with cm units
-    SliderUSDistance.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_10 - 4, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, BUTTON_WIDTH_10,
-            DISTANCE_SLIDER_SIZE,
+    // Big US distance slider without caption but with cm units
+    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, BUTTON_WIDTH_10, DISTANCE_SLIDER_SIZE,
             DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderUSDistance.setValueUnitString("cm");
+#endif
     SliderUSDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
     SliderUSDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
-    SliderUSDistance.setValueUnitString("cm");
+
+    /*
+     * One thin IR distance slider
+     */
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+    // Small IR distance slider with captions and without cm units
+    SliderIRDistance.init(POS_X_THIRD_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+    DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+            FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
+    SliderIRDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
+    // Caption properties
+    SliderIRDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
+    COLOR_WHITE);
+    // Captions
+    SliderIRDistance.setCaption("IR");
+    // value below caption - right aligned
+    SliderIRDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_CAPTION_BELOW,
+            4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
+#endif
+
+#ifdef CAR_HAS_PAN_SERVO
+    // left of SliderUSPosition
+    SliderPan.init(POS_X_PAN_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
+    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doHorizontalServoPosition);
+    SliderPan.setBarThresholdColor(COLOR_BLUE);
+    // scale slider values
+    SliderPan.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
+    SliderPan.setValueUnitString("\xB0"); // \xB0 is degree character
+#endif
+
+#ifdef CAR_HAS_TILT_SERVO
+    SliderTilt.init(POS_X_TILT_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, TILT_SERVO_MIN_VALUE, COLOR_YELLOW,
+    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doVerticalServoPosition);
+    SliderTilt.setBarThresholdColor(COLOR_BLUE);
+    // scale slider values
+    SliderTilt.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
+    SliderTilt.setValueUnitString("\xB0"); // \xB0 is degree character
 #endif
 
     initHomePage();
@@ -415,7 +455,6 @@ void readAndPrintVin() {
     if (sCurrentPage == PAGE_HOME) {
         tPosX = BUTTON_WIDTH_8_POS_4;
         tPosY = BUTTON_HEIGHT_8_LINE_6 - TEXT_SIZE_11_DECEND;
-//    } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL || sCurrentPage == PAGE_FOLLOWER) {
     } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         tPosX = BUTTON_WIDTH_3_POS_2 - BUTTON_DEFAULT_SPACING - (8 * TEXT_SIZE_11_WIDTH);
         tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
@@ -428,12 +467,56 @@ void readAndPrintVin() {
 
 }
 
-void readAndPrintVinPeriodically() {
+void checkForLowVoltage() {
+    static uint8_t sLowVoltageCount = 0;
+    if (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
+        sLowVoltageCount++;
+    } else if (sLowVoltageCount > 1) {
+        sLowVoltageCount--;
+    }
+    if (sLowVoltageCount > 2) {
+        // Here more than 2 consecutive times (for 6 seconds) low voltage detected
+        RobotCarMotorControl.stopMotorsAndReset();
+
+        if (BlueDisplay1.isConnectionEstablished()) {
+            drawCommonGui();
+            BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
+            // print current "too low" voltage
+            char tDataBuffer[18];
+            char tVCCString[6];
+            dtostrf(sVINVoltage, 4, 2, tVCCString);
+            sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
+            BlueDisplay1.drawText(80, 50 + TEXT_SIZE_33_HEIGHT, tDataBuffer);
+            BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + (2 * TEXT_SIZE_33_HEIGHT), F("too low"));
+        }
+
+        tone(PIN_SPEAKER, 2200, 100);
+        delay(200);
+        tone(PIN_SPEAKER, 2200, 100);
+
+        if (BlueDisplay1.isConnectionEstablished()) {
+            uint8_t tLoopCount = VOLTAGE_TOO_LOW_DELAY_ONLINE / 500; // 12
+            do {
+                readAndPrintVin(); // print current voltage
+                delayMillisWithCheckAndHandleEvents(500); // and wait
+                tLoopCount--;
+                readVINVoltage(); // read new VCC value
+            } while (tLoopCount > 0 || (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD));
+            // refresh current page
+            GUISwitchPages(NULL, 0);
+        } else {
+            delay(VOLTAGE_TOO_LOW_DELAY_OFFLINE);
+        }
+    }
+}
+
+void readCheckAndPrintVinPeriodically() {
     uint32_t tMillis = millis();
 
     if (tMillis >= sMillisOfNextVCCInfo) {
         sMillisOfNextVCCInfo = tMillis + PRINT_VOLTAGE_PERIOD_MILLIS;
         readAndPrintVin();
+        checkForLowVoltage();
     }
 }
 

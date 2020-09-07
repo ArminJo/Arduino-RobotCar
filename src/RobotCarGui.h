@@ -30,7 +30,7 @@
 
 #define PATH_LENGTH_MAX 100
 
-#define PRINT_VOLTAGE_PERIOD_MILLIS 3000
+#define PRINT_VOLTAGE_PERIOD_MILLIS 2000
 extern uint32_t sMillisOfNextVCCInfo;
 
 // a string buffer for BD info output
@@ -47,7 +47,7 @@ extern char sStringBuffer[128];
 #define DISPLAY_WIDTH DISPLAY_HALF_VGA_WIDTH   // 320
 #define DISPLAY_HEIGHT DISPLAY_HALF_VGA_HEIGHT // 240
 
-#define HEADER_X BUTTON_WIDTH_3_5_POS_2
+#define HEADER_X BUTTON_WIDTH_3_5_POS_2 - (TEXT_SIZE_22_WIDTH / 2)
 
 #define SLIDER_TOP_MARGIN 10
 #define SPEED_SLIDER_SIZE BUTTON_HEIGHT_4_LINE_3  // 128
@@ -63,8 +63,6 @@ extern char sStringBuffer[128];
 #define PAGE_SHOW_PATH 2
 #define PAGE_TEST 3
 #define PAGE_LAST_NUMBER PAGE_TEST
-//#define PAGE_FOLLOWER 4
-//#define PAGE_LAST_NUMBER PAGE_FOLLOWER
 extern uint8_t sCurrentPage;
 
 void showUSDistance(unsigned int aCentimeter);
@@ -96,30 +94,21 @@ void doStartStopAutomomousDrive(BDButton * aTheTouchedButton, int16_t aValue);
 void doStartStopTestUser(BDButton * aTheTouchedButton, int16_t aValue);
 
 void doStartStopAutonomousForPathPage(BDButton * aTheTouchedButton, int16_t aValue);
-void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode = MODE_MANUAL_DRIVE);
 void setStepMode(uint8_t aStepMode);
 
 // from TestPage
+extern bool sShowDebug;
+
 void initTestPage(void);
 void drawTestPage(void);
 void startTestPage(void);
 void loopTestPage(void);
 void stopTestPage(void);
-extern BDSlider SliderUSPosition;
-extern BDSlider SliderUSDistance;
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-extern BDSlider SliderIRDistance;
-#endif
-
-// from FollowerModePage
-void initFollowerModePage(void);
-void drawFollowerModePage(void);
-void startFollowerModePage(void);
-void loopFollowerModePage(void);
-void stopFollowerModePage(void);
 
 // from HomePage
 extern BDButton TouchButtonMelody;
+extern void doHorizontalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue);
+extern void doVerticalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue);
 
 void initHomePage(void);
 void drawHomePage(void);
@@ -158,6 +147,20 @@ void showSpeedSliderValue();
 
 extern BDSlider SliderSpeedRight;
 extern BDSlider SliderSpeedLeft;
+
+extern BDSlider SliderUSPosition;
+extern BDSlider SliderUSDistance;
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+extern BDSlider SliderIRDistance;
+#endif
+
+#ifdef CAR_HAS_PAN_SERVO
+extern BDSlider SliderPan;
+#endif
+#ifdef CAR_HAS_TILT_SERVO
+extern BDSlider SliderTilt;
+#endif
+
 void displayVelocitySliderValues();
 
 void drawCommonGui(void);
@@ -177,7 +180,7 @@ void printMotorDebugValues();
 void printDistanceValues();
 
 void readAndPrintVin();
-void readAndPrintVinPeriodically();
+void readCheckAndPrintVinPeriodically();
 void delayAndLoopGUI(uint16_t aDelayMillis);
 
 /*
@@ -189,12 +192,10 @@ void insertToPath(int aLength, int aDegree, bool aAddEntry);
 
 void clearPrintedForwardDistancesInfos();
 void drawForwardDistancesInfos();
-void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClear);
+void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClearVector);
 
 extern uint8_t sRobotCarDirection;
 extern bool sRuningAutonomousDrive;
-
-extern const int sGetDistancePeriod;
 
 #endif /* SRC_ROBOTCARGUI_H_ */
 

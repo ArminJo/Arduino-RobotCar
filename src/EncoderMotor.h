@@ -116,6 +116,7 @@ public:
      * Direct motor control
      */
     void setSpeed(int aRequestedSpeed);
+    void setSpeed(int aRequestedSpeed, uint8_t aRequestedDirection);
     void setCurrentSpeedCompensated(int aRequestedSpeed);
     void setCurrentSpeedCompensated(uint8_t aRequestedSpeed, uint8_t aRequestedDirection);
 
@@ -132,7 +133,7 @@ public:
     static void startAndWaitForFullSpeedForAll(void);
 
     static void stopAllMotors(uint8_t aStopMode);
-    static void stopAllMotorsAndreset();
+    static void stopAllMotorsAndReset();
     static void waitUntilAllMotorsStopped(void (*aLoopCallback)(void));
     static void stopAllMotorsAndWaitUntilStopped();
 

@@ -1,7 +1,7 @@
 /*
  * TB6612Motor.cpp
  *
- * Low level Motor control for Adafruit_MotorShield OR breakout board with TB6612FNG / Driver IC for Dual DC motor
+ * Low level motor control for Adafruit_MotorShield OR breakout board with TB6612FNG / Driver IC for dual DC motor
  *
  * Motor control has 2 parameters:
  * 1. Speed / PWM which is ignored for BRAKE or RELEASE. This library also accepts signed speed (including the direction as sign).
@@ -26,11 +26,6 @@
 
 #include "TB6612DcMotor.h"
 
-#if ! defined(USE_TB6612_BREAKOUT_BOARD)
-// Create the motor shield object with the default I2C address
-Adafruit_MotorShield sAdafruitMotorShield = Adafruit_MotorShield();
-#endif
-
 TB6612DcMotor::TB6612DcMotor() { // @suppress("Class members should be properly initialized")
 }
 
@@ -47,14 +42,74 @@ void TB6612DcMotor::init(uint8_t aForwardPin, uint8_t aBackwardPin, uint8_t aPWM
 }
 
 #else
+#  ifdef USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+void TB6612DcMotor::I2CWriteByte(uint8_t aAddress, uint8_t aData) {
+    Wire.beginTransmission(0x60);
+    Wire.write(aAddress);
+    Wire.write(aData);
+    Wire.endTransmission();
+}
+
+void TB6612DcMotor::I2CSetPWM(uint8_t aPin, uint16_t aOn, uint16_t aOff) {
+    Wire.beginTransmission(0x60);
+    Wire.write((PCA9685_FIRST_PWM_REGISTER) + 4 * aPin);
+    Wire.write(aOn);
+    Wire.write(aOn >> 8);
+    Wire.write(aOff);
+    Wire.write(aOff >> 8);
+    Wire.endTransmission();
+}
+
+void TB6612DcMotor::I2CSetPin(uint8_t aPin, bool aSetToOn) {
+    if (aSetToOn) {
+        I2CSetPWM(aPin, 4096, 0);
+    } else {
+        I2CSetPWM(aPin, 0, 0);
+    }
+}
+
+#  else
+// Create the motor shield object with the default I2C address
+Adafruit_MotorShield sAdafruitMotorShield = Adafruit_MotorShield();
+#  endif // USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+
 /*
- * aMotorNumber from 0 to 3
+ * aMotorNumber from 0 to 1
+ * Currently motors 2 and 3 are not required/supported
  */
 void TB6612DcMotor::init(uint8_t aMotorNumber) {
+#  ifdef USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+    if (aMotorNumber == 0) {
+        PWMPin = 8;
+        BackwardPin = 9;
+        ForwardPin = 10;
+    } else {
+        PWMPin = 13;
+        BackwardPin = 12;
+        ForwardPin = 11;
+    }
 
+    Wire.begin();
+#if defined (ARDUINO_ARCH_AVR) // Other platforms do not have this new function
+    Wire.setWireTimeout(5000); // Sets timeout to 5 ms. default is 25 ms.
+#endif
+    // Reset PCA9685
+    Wire.beginTransmission(PCA9685_GENERAL_CALL_ADDRESS);
+    Wire.write(PCA9685_SOFTWARE_RESET);
+    Wire.endTransmission();
+    // Set expander to 1600 HZ
+    I2CWriteByte(PCA9685_MODE1_REGISTER, _BV(PCA9685_MODE_1_SLEEP)); // go to sleep
+    I2CWriteByte(PCA9685_PRESCALE_REGISTER, PCA9685_PRESCALER_FOR_1600_HZ); // set the prescaler
+    delay(2); // > 500 us before the restart bit according to datasheet
+    I2CWriteByte(PCA9685_MODE1_REGISTER, _BV(PCA9685_MODE_1_RESTART) | _BV(PCA9685_MODE_1_AUTOINCREMENT)); // reset sleep and enable auto increment
+
+#  else
     Adafruit_MotorShield_DcMotor = sAdafruitMotorShield.getMotor(aMotorNumber + 1);
     sAdafruitMotorShield.begin();
-}#endif
+#  endif
+
+}
+#endif // USE_TB6612_BREAKOUT_BOARD
 
 /*
  *  @brief  Control the DC motor driver direction and stop mode
@@ -82,7 +137,28 @@ void TB6612DcMotor::setMotorDriverMode(uint8_t aMotorDriverMode) {
     }
 #else
     // until here DIRECTION_FORWARD is 0 back is 1, Adafruit library starts with 1
+#  ifdef USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+    switch (aMotorDriverMode) {
+    case DIRECTION_FORWARD:
+        I2CSetPin(BackwardPin, LOW); // take low first to avoid 'break'
+        I2CSetPin(ForwardPin, HIGH);
+        break;
+    case DIRECTION_BACKWARD:
+        I2CSetPin(ForwardPin, LOW); // take low first to avoid 'break'
+        I2CSetPin(BackwardPin, HIGH);
+        break;
+    case MOTOR_BRAKE:
+        I2CSetPin(ForwardPin, HIGH);
+        I2CSetPin(BackwardPin, HIGH);
+        break;
+    case MOTOR_RELEASE:
+        I2CSetPin(ForwardPin, LOW);
+        I2CSetPin(BackwardPin, LOW);
+        break;
+    }
+#  else
     Adafruit_MotorShield_DcMotor->run(aMotorDriverMode + CONVERSION_FOR_ADAFRUIT_API);
+#  endif
 #endif
 
 }
@@ -100,24 +176,21 @@ void TB6612DcMotor::setSpeed(uint8_t aSpeedRequested, uint8_t aDirection) {
 #ifdef USE_TB6612_BREAKOUT_BOARD
     analogWrite(PWMPin, aSpeedRequested);
 #else
+#  ifdef USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+    I2CSetPWM(PWMPin, 0, 16 * aSpeedRequested);
+#  else
     Adafruit_MotorShield_DcMotor->setSpeed(aSpeedRequested);
+#  endif
 #endif
 }
 
 void TB6612DcMotor::setSpeed(int aSpeedRequested) {
-    if (aSpeedRequested == 0) {
-        setMotorDriverMode(StopMode);
-    } else if (aSpeedRequested < 0) {
+    if (aSpeedRequested < 0) {
         aSpeedRequested = -aSpeedRequested;
-        setMotorDriverMode(DIRECTION_BACKWARD);
+        setSpeed(aSpeedRequested, DIRECTION_BACKWARD);
     } else {
-        setMotorDriverMode(DIRECTION_FORWARD);
+        setSpeed(aSpeedRequested, DIRECTION_FORWARD);
     }
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    analogWrite(PWMPin, aSpeedRequested);
-#else
-    Adafruit_MotorShield_DcMotor->setSpeed(aSpeedRequested);
-#endif
 }
 
 /*
@@ -128,7 +201,11 @@ void TB6612DcMotor::stop(uint8_t aStopMode) {
 #ifdef USE_TB6612_BREAKOUT_BOARD
     analogWrite(PWMPin, 0);
 #else
+#  ifdef USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD
+    setSpeed(0, DIRECTION_FORWARD);
+#  else
     Adafruit_MotorShield_DcMotor->setSpeed(0);
+#  endif
 #endif
     setMotorDriverMode(CheckStopMODE(aStopMode));
 }

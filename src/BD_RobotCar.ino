@@ -8,6 +8,8 @@
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
  *  Just overwrite the 2 functions myOwnFillForwardDistancesInfo() and doUserCollisionDetection() to test your own skill.
  *
+ *  Program size of GUI is 63 percent. 27% vs. 90%.
+ *
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
@@ -49,8 +51,7 @@ bool sPlayMelody = false;
 void playRandomMelody();
 #endif
 
-void initRobotCarPins();
-void initLaserServos();
+void initServos();
 
 /*************************************************************************************
  * Extend this basic collision detection to test your own skill in autonomous driving
@@ -122,8 +123,10 @@ void setup() {
     if (sMCUSR & (1 << EXTRF)) {
         sBootReasonWasReset = true;
     }
+    tone(PIN_SPEAKER, 2200, 50);
 
-    setupGUI(); // this enables output by BlueDisplay1
+    sLastServoAngleInDegrees = 90;
+    setupGUI(); // this enables output by BlueDisplay1 and lasts around 100 milliseconds
 
     if (!BlueDisplay1.isConnectionEstablished()) {
 #if defined (USE_STANDARD_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
@@ -141,11 +144,17 @@ void setup() {
 //        BlueDisplay1.debug("sMCUSR=", sMCUSR);
     }
 
-    initRobotCarPins();
+    initServos();
+
+#ifdef CAR_HAS_CAMERA
+    pinMode(PIN_CAMERA_SUPPLY_CONTROL, OUTPUT);
+#endif
 
 #ifdef CAR_HAS_LASER
-    initLaserServos();
+    pinMode(PIN_LASER_OUT, OUTPUT);
 #endif
+
+    tone(PIN_SPEAKER, 2200, 50);
 
     // initialize motors
 #ifdef USE_TB6612_BREAKOUT_BOARD
@@ -156,16 +165,19 @@ void setup() {
 
 // reset all values
     resetPathData();
+
+    delay(100);
+    tone(PIN_SPEAKER, 2200, 50);
     initDistance();
 
     readVINVoltage();
     randomSeed(sVINVoltage * 10000);
 
-    tone(PIN_SPEAKER, 2200, 100);
+    delay(100);
+    tone(PIN_SPEAKER, 2200, 50);
 }
 
 void loop() {
-    checkForLowVoltage();
 
     /*
      * check if timeout, no Bluetooth connection and connected to LIPO battery
@@ -182,7 +194,7 @@ void loop() {
         delayAndLoopGUI(6000); // delay needed for millis() check above!
 #endif
         // Set right page for reconnect
-        sCurrentPage = PAGE_AUTOMATIC_CONTROL;
+        GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
         if (sBootReasonWasReset) {
             startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
         } else {
@@ -200,7 +212,7 @@ void loop() {
      */
     if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS < millis()) {
         sMillisOfLastReceivedBDEvent = millis() - (TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
-        fillAndShowForwardDistancesInfo((sCurrentPage == PAGE_AUTOMATIC_CONTROL), true, true);
+        fillAndShowForwardDistancesInfo(true, true);
         DistanceServo.write(90); // set servo back to normal
     }
 
@@ -234,17 +246,6 @@ void loop() {
     }
 }
 
-void initRobotCarPins() {
-
-#ifdef CAR_HAS_LASER
-    pinMode(PIN_LASER_OUT, OUTPUT);
-#endif
-
-#ifdef CAR_HAS_CAMERA
-    pinMode(PIN_CAMERA_SUPPLY_CONTROL, OUTPUT);
-#endif
-}
-
 void readVINVoltage() {
     uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(VIN_11TH_IN_CHANNEL, INTERNAL);
     uint16_t tVIN = readADCChannelWithReferenceOversample(VIN_11TH_IN_CHANNEL, INTERNAL, 2); // 4 samples
@@ -262,84 +263,48 @@ void readVINVoltage() {
 #endif
 }
 
-void checkForLowVoltage() {
-    if (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD) {
-        RobotCarMotorControl.stopMotorsAndReset();
-
-        if (BlueDisplay1.isConnectionEstablished()) {
-            drawCommonGui();
-            BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR_RED, COLOR_WHITE);
-            // print current "too low" voltage
-            char tDataBuffer[18];
-            char tVCCString[6];
-            dtostrf(sVINVoltage, 4, 2, tVCCString);
-            sprintf_P(tDataBuffer, PSTR("%s volt"), tVCCString);
-            BlueDisplay1.drawText(80, 50 + TEXT_SIZE_33_HEIGHT, tDataBuffer);
-            BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + (2 * TEXT_SIZE_33_HEIGHT), F("too low"));
-        }
-
-        tone(PIN_SPEAKER, 2200, 100);
-        delay(200);
-        tone(PIN_SPEAKER, 2200, 100);
-
-        if (BlueDisplay1.isConnectionEstablished()) {
-            uint8_t tLoopCount = VOLTAGE_TOO_LOW_DELAY_ONLINE / 500; // 12
-            do {
-                readAndPrintVin(); // print current voltage
-                delayMillisWithCheckAndHandleEvents(500); // and wait
-                tLoopCount--;
-                readVINVoltage(); // read new VCC value
-            } while (tLoopCount > 0 || (sVINVoltage < VOLTAGE_LOW_THRESHOLD && sVINVoltage > VOLTAGE_USB_THRESHOLD));
-            // refresh current page
-            GUISwitchPages(NULL, 0);
-        } else {
-            delay (VOLTAGE_TOO_LOW_DELAY_OFFLINE);
-        }
-    }
-}
-
 #ifdef ENABLE_RTTTL
 #include "digitalWriteFast.h"
 /*
  * Prepare for tone, use motor as loudspeaker
  */
 void playRandomMelody() {
-    // this flag may be reseted by checkAndHandleEvents()
-    sPlayMelody = true;
-    BlueDisplay1.debug("Play melody");
+// this flag may be reseted by checkAndHandleEvents()
+sPlayMelody = true;
+BlueDisplay1.debug("Play melody");
 
-    OCR2B = 0;
-    bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    startPlayRandomRtttlFromArrayPGM(PIN_LEFT_MOTOR_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
-    while (updatePlayRtttl()) {
-        // check for pause in melody (i.e. timer disabled) and disable motor for this period
-        if ( TIMSK2 & _BV(OCIE2A)) {
-            // timer enabled
-            digitalWriteFast(PIN_LEFT_MOTOR_PWM, HIGH); // re-enable motor
-        } else {
-            // timer disabled
-            digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor for pause in melody
-        }
-        checkAndHandleEvents();
-        if (!sPlayMelody) {
-            BlueDisplay1.debug("Stop melody");
-            break;
-        }
+OCR2B = 0;
+bitWrite(TIMSK2, OCIE2B, 1);// enable interrupt for inverted pin handling
+startPlayRandomRtttlFromArrayPGM(PIN_LEFT_MOTOR_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+while (updatePlayRtttl()) {
+    // check for pause in melody (i.e. timer disabled) and disable motor for this period
+    if ( TIMSK2 & _BV(OCIE2A)) {
+        // timer enabled
+        digitalWriteFast(PIN_LEFT_MOTOR_PWM, HIGH);// re-enable motor
+    } else {
+        // timer disabled
+        digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);// disable motor for pause in melody
     }
-    TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
-    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
-    bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
-    sPlayMelody = false;
+    checkAndHandleEvents();
+    if (!sPlayMelody) {
+        BlueDisplay1.debug("Stop melody");
+        break;
+    }
+}
+TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
+digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
+bitWrite(TIMSK2, OCIE2B, 0);// disable interrupt
+sPlayMelody = false;
 }
 
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
-    OCR2B = 0;
-    bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-    tone(PIN_LEFT_MOTOR_FORWARD, aFrequency);
-    delay(aDuration);
-    noTone(PIN_LEFT_MOTOR_FORWARD);
-    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
-    bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
+OCR2B = 0;
+bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
+tone(PIN_LEFT_MOTOR_FORWARD, aFrequency);
+delay(aDuration);
+noTone(PIN_LEFT_MOTOR_FORWARD);
+digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);// disable motor
+bitWrite(TIMSK2, OCIE2B, 0);// disable interrupt
 }
 
 /*
@@ -347,30 +312,45 @@ void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
  */
 #ifdef USE_TB6612_BREAKOUT_BOARD
 ISR(TIMER2_COMPB_vect) {
-    digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWARD));
+digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWARD));
 }
 #endif
 #endif // ENABLE_RTTTL
 
 /*
- * Laser servo stuff
+ * Pn tilt servo stuff
  */
 #ifdef CAR_HAS_PAN_SERVO
-Servo LaserPanServo;
+Servo PanServo;
 #endif
 #ifdef CAR_HAS_TILT_SERVO
 Servo TiltServo;
 #endif
 
-void initLaserServos() {
+void resetServos() {
+    DistanceServoWriteAndDelay(90);
+#ifdef CAR_HAS_PAN_SERVO
+    PanServo.write(90);
+#endif
+#ifdef CAR_HAS_TILT_SERVO
+    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
+#endif
+}
+
+void initServos() {
+    if (RobotCarMotorControl.is2WDCar) {
+        // TODO store in EEPROM
+        DistanceServo.attach(PIN_DISTANCE_SERVO, DISTANCE_SERVO_2WD_MIN_PULSE_WIDTH, DISTANCE_SERVO_2WD_MAX_PULSE_WIDTH);
+    } else {
+        DistanceServo.attach(PIN_DISTANCE_SERVO);
+    }
 #ifdef CAR_HAS_PAN_SERVO
 // initialize and set Laser pan servo
-    LaserPanServo.attach(PIN_LASER_SERVO_PAN);
-    LaserPanServo.write(90);
+    PanServo.attach(PIN_LASER_SERVO_PAN);
 #endif
 #ifdef CAR_HAS_TILT_SERVO
     TiltServo.attach(PIN_LASER_SERVO_TILT);
-    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
 #endif
+    resetServos();
 }
 

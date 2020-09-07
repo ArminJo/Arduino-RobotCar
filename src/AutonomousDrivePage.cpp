@@ -24,6 +24,7 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 BDButton TouchButtonStepMode;
 const char sStepModeButtonStringContinuousStepToTurn[] PROGMEM = "Continuous\n->\nStep to turn";
@@ -124,59 +125,9 @@ void doChangeScanSpeed(BDButton * aTheTouchedButton, int16_t aValue) {
 
 void doSingleScan(BDButton * aTheTouchedButton, int16_t aValue) {
     clearPrintedForwardDistancesInfos();
-    fillAndShowForwardDistancesInfo(true, true, true);
+    fillAndShowForwardDistancesInfo( true, true);
 
-    doWallDetection(true);
-    if (sDriveMode == MODE_AUTONOMOUS_DRIVE_BUILTIN) {
-        sNextDegreesToTurn = doBuiltInCollisionDetection();
-    } else {
-        sNextDegreesToTurn = doUserCollisionDetection();
-    }
-    drawCollisionDecision(sNextDegreesToTurn, CENTIMETER_PER_RIDE, false);
-}
-
-/*
- * aDriveMode required if aDoStart is true otherwise sDriveMode = MODE_MANUAL_DRIVE;
- */
-void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
-    sRuningAutonomousDrive = aDoStart;
-    noTone(PIN_SPEAKER); // for follower mode
-
-    if (aDoStart) {
-        /*
-         * Start autonomous driving.
-         */
-        resetPathData();
-        sDoStep = true; // enable next step
-        sDriveMode = aDriveMode;
-        // decide which button called us
-        if (aDriveMode == MODE_AUTONOMOUS_DRIVE_USER) {
-            /*
-             * Own test always starts in mode SINGLE_STEP
-             */
-            setStepMode(MODE_SINGLE_STEP);
-        } else if (aDriveMode == MODE_FOLLOWER) {
-            DistanceServoWriteAndDelay(90); // reset Servo
-            clearPrintedForwardDistancesInfos();
-            SliderUSDistance.drawSlider();
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-            SliderIRDistance.drawSlider();
-#  endif
-        }
-
-    } else {
-        /*
-         * Stop autonomous driving.
-         */
-        if (sStepMode != MODE_SINGLE_STEP) {
-            // add last driven distance to path
-            insertToPath(rightEncoderMotor.LastRideEncoderCount, sLastDegreesTurned, true);
-        }
-        DistanceServoWriteAndDelay(90);
-        sDriveMode = MODE_MANUAL_DRIVE;
-    }
-    handleAutomomousDriveRadioButtons();
-    startStopRobotCar(aDoStart);
+    postProcessAndCollisionDetection();
 }
 
 void doStartStopFollowerMode(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -296,6 +247,7 @@ void clearPrintedForwardDistancesInfos() {
 
 /*
  * Draw values of ActualDistancesArray as vectors
+ * Not used yet
  */
 void drawForwardDistancesInfos() {
     color16_t tColor;
@@ -326,27 +278,31 @@ void drawForwardDistancesInfos() {
         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
         tCurrentDegrees += DEGREES_PER_STEP;
     }
-    doWallDetection(true);
 }
 
-void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClear) {
+/*
+ * Draws only if sCurrentPage == PAGE_AUTOMATIC_CONTROL
+ */
+void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoClearVector) {
+
     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         color16_t tColor = COLOR_BLUE;
         int tDegreeToDisplay = aDegreeToTurn;
-        if (tDegreeToDisplay == 180) {
+
+        if (aDoClearVector) {
+            tColor = COLOR_WHITE;
+        } else if (tDegreeToDisplay == 180) {
             tColor = COLOR_PURPLE;
             tDegreeToDisplay = 0;
         }
-        if (aDoClear) {
-            tColor = COLOR_WHITE;
-        }
+
         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
                 tColor);
-        if (!aDoClear) {
+        if (!aDoClearVector) {
             sprintf_P(sStringBuffer, PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sForwardDistancesInfo.WallLeftAngleDegrees,
                     aDegreeToTurn, sForwardDistancesInfo.WallRightAngleDegrees); // \xB0 is degree character
             BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sStringBuffer, TEXT_SIZE_11,
-                    COLOR_BLACK, COLOR_WHITE);
+            COLOR_BLACK, COLOR_WHITE);
         }
     }
 }

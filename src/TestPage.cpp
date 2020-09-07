@@ -21,8 +21,7 @@
  */
 #include "RobotCar.h"
 #include "RobotCarGui.h"
-
-//#include <HCSR04.h>
+#include "Distance.h"
 
 /*
  * Motor GUI
@@ -45,8 +44,6 @@ BDButton TouchButton90DegreeLeft;
 BDButton TouchButton360Degree;
 
 bool sShowDebug = false;
-
-const int sGetDistancePeriod = 500;
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void doDistance(BDButton * aTheTouchedButton, int16_t aValue) {
@@ -166,6 +163,7 @@ void drawTestPage(void) {
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
     SliderUSDistance.drawSlider();
+
 #  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     SliderIRDistance.drawSlider();
 #  endif
@@ -185,19 +183,6 @@ void startTestPage(void) {
 }
 
 void loopTestPage(void) {
-
-    checkAndShowDistancePeriodically(sGetDistancePeriod);
-
-    if (EncoderMotor::MotorValuesHaveChanged) {
-        EncoderMotor::MotorValuesHaveChanged = false;
-        printMotorValues();
-        if (sShowDebug) {
-            printMotorDebugValues();
-        }
-    }
-
-    displayVelocitySliderValues();
-
 }
 
 void stopTestPage(void) {

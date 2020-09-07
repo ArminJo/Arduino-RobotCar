@@ -44,6 +44,7 @@
  * For analogWrite the millis() timer0 is used since we use pin 5 & 6.
  */
 //#define USE_TB6612_BREAKOUT_BOARD
+//
 /*
  * Plays melody after initial timeout has reached
  * Enables the Play Melody button
@@ -75,19 +76,19 @@
  * PIN  I/O Function
  *   2  I   Right motor encoder
  *   3  I   Left motor encoder
- *   4  O   Motor 0 fwd / NC for UNO board
- *   5  O   Motor 0 PWM / NC for UNO board
- *   6  O   Motor 1 PWM / NC for UNO board
- *   7  O   Motor 0 back / NC for UNO board
- *   8  O   Motor 1 fwd / NC for UNO board
+ *   4  O   Left motor fwd / NC for UNO board
+ *   5  O   Left motor PWM / NC for UNO board
+ *   6  O   Right motor PWM / NC for UNO board
+ *   7  O   Left motor back / NC for UNO board
+ *   8  O   Right motor fwd / NC for UNO board
  *   9  O   Servo US distance
  *   10 O   Servo laser pan
  *   11 O   Servo laser tilt / Speaker for UNO board
- *   12 O   Motor 1 back / Two wheel detection / Input Pullup for UNO board
+ *   12 O   Right motor back / Two wheel detection / Input Pullup for UNO board
  *   13 O   Laser power
  *
  *   A0 I   VIN/11, 1MOhm to VIN, 100kOhm to ground.
- *   A1 O   US trigger
+ *   A1 O   US trigger (and echo in 1 pin US sensor mode)
  *   A2 I   IR distance (needs 1 pin US sensor mode) / US echo
  *   A3 IP  Two wheel detection with input pullup
  *   A4 SDA NC for Nano / I2C for UNO board motor shield
@@ -96,15 +97,11 @@
  *   A7 O   Camera supply control
  */
 
+#ifdef USE_TB6612_BREAKOUT_BOARD
 /*
- * Motor control by TB6612 breakout board
+ * Pins 9 + 10 are already used for Servo library
+ * 2 + 3 are already used for encoder input
  */
-
-/*
- * Pins 9 + 10 are used for Servo library
- * 2 + 3 are used for encoder input
- */
-
 #define PIN_LEFT_MOTOR_FORWARD     4
 #define PIN_LEFT_MOTOR_BACKWARD    7
 #define PIN_LEFT_MOTOR_PWM         5 // PWM capable
@@ -112,20 +109,25 @@
 #define PIN_RIGHT_MOTOR_FORWARD     8
 #define PIN_RIGHT_MOTOR_BACKWARD   12
 #define PIN_RIGHT_MOTOR_PWM         6 // PWM capable
+#endif
 
 /*
  * Servos
  */
 #define PIN_DISTANCE_SERVO       9
+// Compensate for my SG90 Servo. Servo is mounted head down, so values must be swapped!!!
+#define DISTANCE_SERVO_2WD_MIN_PULSE_WIDTH    (MIN_PULSE_WIDTH + 40) // Value for 180 degree
+#define DISTANCE_SERVO_2WD_MAX_PULSE_WIDTH    MAX_PULSE_WIDTH // Value for 0 degree, since servo is mounted head down.
 #ifdef CAR_HAS_PAN_SERVO
 #define PIN_LASER_SERVO_PAN     10
-extern Servo LaserPanServo;
+extern Servo PanServo;
 #endif
 #ifdef CAR_HAS_TILT_SERVO
 #define PIN_LASER_SERVO_TILT    11
 #define TILT_SERVO_MIN_VALUE     7 // since lower values will make an insane sound at my pan tilt device
 extern Servo TiltServo;
 #endif
+void resetServos();
 
 /*
  * Distance sensors
@@ -137,6 +139,8 @@ extern Servo TiltServo;
 
 #define DISTANCE_TIMEOUT_CM 100 // do not measure and process distances greater than 100 cm
 #define DISTANCE_TIMEOUT_COLOR COLOR_CYAN
+
+#define DISTANCE_DISPLAY_PERIOD_MILLIS 500
 
 /*
  * Timeouts

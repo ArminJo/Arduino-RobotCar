@@ -31,6 +31,7 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 BDButton TouchButtonTestPage;
 BDButton TouchButtonLaser;
@@ -42,23 +43,23 @@ BDButton TouchButtonCameraOnOff;
 #endif
 
 #ifdef CAR_HAS_PAN_SERVO
-BDSlider SliderLaserPositionHorizontal;
+BDSlider SliderPan;
 #endif
 #ifdef CAR_HAS_TILT_SERVO
-BDSlider SliderLaserPositionVertical;
+BDSlider SliderTilt;
 #endif
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 // Here we get values from 0 to 180 degrees from scaled slider
 #ifdef CAR_HAS_PAN_SERVO
-void doLaserServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
-    LaserPanServo.write(aValue);
+void doHorizontalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
+    PanServo.write(aValue);
 }
 #endif
 
 #ifdef CAR_HAS_TILT_SERVO
-void doVerticalLaserServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
+void doVerticalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
     TiltServo.write(aValue);
 }
 #endif
@@ -104,33 +105,6 @@ void initHomePage(void) {
             FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doLaserOnOff);
 #endif
 
-#ifdef CAR_HAS_PAN_SERVO
-    // left of SliderUSPosition
-    SliderLaserPositionHorizontal.init(BUTTON_WIDTH_6_POS_6 - BUTTON_WIDTH_12 - BUTTON_DEFAULT_SPACING_HALF, SLIDER_TOP_MARGIN,
-    BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
-    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doLaserServoPosition);
-    SliderLaserPositionHorizontal.setBarThresholdColor(COLOR_BLUE);
-    // scale slider values
-    SliderLaserPositionHorizontal.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderLaserPositionHorizontal.setValueUnitString("\xB0"); // \xB0 is degree character
-
-    // initialize and set Laser pan servo
-    LaserPanServo.attach(PIN_LASER_SERVO_PAN);
-    LaserPanServo.write(90);
-#endif
-
-#ifdef CAR_HAS_TILT_SERVO
-    SliderLaserPositionVertical.init(BUTTON_WIDTH_6_POS_6 - (2 * BUTTON_WIDTH_12) - BUTTON_DEFAULT_SPACING, SLIDER_TOP_MARGIN,
-    BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 0, COLOR_YELLOW,
-    SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doVerticalLaserServoPosition);
-    SliderLaserPositionVertical.setBarThresholdColor(COLOR_BLUE);
-    // scale slider values
-    SliderLaserPositionVertical.setScaleFactor(180.0 / LASER_SLIDER_SIZE); // Values from 0 to 180 degrees
-    SliderLaserPositionVertical.setValueUnitString("\xB0"); // \xB0 is degree character
-
-    TiltServo.attach(PIN_LASER_SERVO_TILT);
-    TiltServo.write(TILT_SERVO_MIN_VALUE);
-#endif
 }
 
 /*
@@ -148,11 +122,14 @@ void drawHomePage(void) {
     BlueDisplay1.drawText(HEADER_X + (3 * TEXT_SIZE_22_WIDTH), (3 * TEXT_SIZE_22_HEIGHT), tCarTypeString);
 
     TouchButtonRobotCarStartStop.drawButton();
+#ifdef CAR_HAS_CAMERA
+    TouchButtonCameraOnOff.drawButton();
+#endif
 #ifdef ENABLE_RTTTL
     TouchButtonMelody.drawButton();
 #endif
-#ifdef CAR_HAS_CAMERA
-    TouchButtonCameraOnOff.drawButton();
+#ifdef CAR_HAS_LASER
+    TouchButtonLaser.drawButton();
 #endif
     TouchButtonTestPage.drawButton();
     TouchButtonNextPage.drawButton();
@@ -160,24 +137,22 @@ void drawHomePage(void) {
     TouchButtonDirection.drawButton();
     TouchButtonCalibrate.drawButton();
 
-#ifdef CAR_HAS_LASER
-    TouchButtonLaser.drawButton();
-
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
 
-#  ifdef CAR_HAS_PAN_SERVO
-    SliderLaserPositionHorizontal.drawSlider();
-#  endif
-#  ifdef CAR_HAS_TILT_SERVO
-    SliderLaserPositionVertical.drawSlider();
-#  endif
-#else
     SliderUSDistance.drawSlider();
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR) && ( ! (defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)))
     SliderIRDistance.drawSlider();
-#  endif
 #endif
+
+#ifdef CAR_HAS_PAN_SERVO
+    SliderPan.drawSlider();
+#endif
+#ifdef CAR_HAS_TILT_SERVO
+    SliderTilt.drawSlider();
+#endif
+
     SliderSpeed.drawSlider();
     SliderSpeedRight.drawSlider();
     SliderSpeedLeft.drawSlider();
@@ -195,16 +170,6 @@ void startHomePage(void) {
 }
 
 void loopHomePage(void) {
-    displayVelocitySliderValues();
-
-#ifndef CAR_HAS_LASER
-    checkAndShowDistancePeriodically(sGetDistancePeriod);
-#endif
-
-    if (EncoderMotor::MotorValuesHaveChanged) {
-        EncoderMotor::MotorValuesHaveChanged = false;
-        printMotorValues();
-    }
 }
 
 void stopHomePage(void) {

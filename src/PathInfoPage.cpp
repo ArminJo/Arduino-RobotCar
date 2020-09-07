@@ -24,9 +24,11 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 BDButton TouchButtonResetPath;
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 void doResetPath(BDButton * aTheTouchedButton, int16_t aValue) {
     resetPathData();
     drawPathInfoPage();

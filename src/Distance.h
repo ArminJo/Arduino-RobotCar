@@ -20,12 +20,57 @@
 #define DISTANCE_H_
 
 #include <Arduino.h>
+#include <Servo.h>
+
+/*
+ * Constants for fillAndShowForwardDistancesInfo(), doWallDetection etc.
+ */
+#define NUMBER_OF_DISTANCES 10
+#define DEGREES_PER_STEP    18
+#define STEPS_PER_SCAN      (NUMBER_OF_DISTANCES - 1) // -> 162 degrees for 18 DEGREES_PER_STEP, 153 for 17 degrees
+#define START_DEGREES       ((180 - (DEGREES_PER_STEP * STEPS_PER_SCAN)) / 2) // 9 for 18, 13,5 for 17 - we need it symmetrical in the 180 degrees range
+
+/*
+ * Index definitions for ForwardDistancesInfoStruct
+ */
+#define INDEX_RIGHT 0
+#define INDEX_LEFT STEPS_PER_SCAN
+#if (STEPS_PER_SCAN == 9)
+// Works only for STEPS_PER_SCAN = 9
+#define INDEX_FORWARD_1 4
+#define INDEX_FORWARD_2 5
+#endif
+
+struct ForwardDistancesInfoStruct {
+    uint8_t RawDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
+    uint8_t ProcessedDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
+    uint8_t IndexOfMaxDistance;
+    uint8_t IndexOfMinDistance;
+    uint8_t MaxDistance;
+    uint8_t MinDistance;
+    // 0 degree => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
+    int8_t WallRightAngleDegrees;
+    int8_t WallLeftAngleDegrees;
+};
+extern ForwardDistancesInfoStruct sForwardDistancesInfo;
+
+extern bool sDoSlowScan;
+extern uint8_t sLastServoAngleInDegrees; // needed for optimized delay for servo repositioning
+extern Servo DistanceServo;
+
+extern int sLastDecisionDegreesToTurnForDisplay;
+extern int sNextDegreesToTurn;
+extern int sLastDegreesTurned;
 
 void initDistance();
+void DistanceServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
+unsigned int getDistanceAsCentiMeter();
+bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan = false);
+void postProcessDistances();
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
-#include <SparkFun_VL53L1X.h>
-extern SFEVL53L1X sToFDistanceSensor;
+#include <vl53l1x_class.h>
+extern VL53L1X sToFDistanceSensor;
 uint8_t getToFDistanceAsCentimeter();
 uint8_t readToFDistanceAsCentimeter(); // no start of measurement, just read result.
 #define OFFSET_MILLIMETER 10 // The offset measured manually or by calibrateOffset(). Offset = RealDistance - MeasuredDistance
