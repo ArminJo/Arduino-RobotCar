@@ -69,7 +69,7 @@ bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan = false
 void postProcessDistances();
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
-#include <vl53l1x_class.h>
+#include "vl53l1x_class.h"
 extern VL53L1X sToFDistanceSensor;
 uint8_t getToFDistanceAsCentimeter();
 uint8_t readToFDistanceAsCentimeter(); // no start of measurement, just read result.

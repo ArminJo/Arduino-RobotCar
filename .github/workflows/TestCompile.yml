@@ -13,7 +13,7 @@ jobs:
     name: Test compiling examples for UNO
     runs-on: ubuntu-latest
     env:
-      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl,SparkFun VL53L1X 4m Laser Distance Sensor
+      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl
 #      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,BlueDisplay,PlayRtttl,SparkFun VL53L1X 4m Laser Distance Sensor
 
     strategy:
@@ -38,6 +38,7 @@ jobs:
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
                 -DUSE_TB6612_BREAKOUT_BOARD
+                -mcall-prologues
 
           - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
             build-properties:
@@ -46,6 +47,7 @@ jobs:
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
                 -DCAR_HAS_TOF_DISTANCE_SENSOR
+                -mcall-prologues
 
     steps:
       - name: Checkout
