@@ -1,5 +1,5 @@
 /*
- *  BD_RobotCar.cpp
+ *  RobotCarBlueDisplay.cpp
  *
  *  Enables Robot car control with the BlueDisplay app.
  *
@@ -44,7 +44,7 @@
  */
 CarMotorControl RobotCarMotorControl;
 float sVINVoltage;
-void checkForLowVoltage();
+bool is2WDCar;
 
 #ifdef ENABLE_RTTTL
 bool sPlayMelody = false;
@@ -124,15 +124,16 @@ void setup() {
         sBootReasonWasReset = true;
     }
     tone(PIN_SPEAKER, 2200, 50);
+    pinMode(PIN_TWO_WD_DETECTION, INPUT_PULLUP);
 
     sLastServoAngleInDegrees = 90;
     setupGUI(); // this enables output by BlueDisplay1 and lasts around 100 milliseconds
 
     if (!BlueDisplay1.isConnectionEstablished()) {
 #if defined (USE_STANDARD_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
-#  if defined(__AVR_ATmega32U4__)
-    while (!Serial); //delay for Leonardo, but this loops forever for Maple Serial
-#  endif
+#if defined(__AVR_ATmega32U4__) || defined(SERIAL_USB) || defined(SERIAL_PORT_USBVIRTUAL)
+    delay(2000); // To be able to connect Serial monitor after reset and before first printout
+#endif
         // Just to know which program is running on my Arduino
         Serial.println(F("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from  " __DATE__));
         Serial.print(F("sMCUSR=0x"));
@@ -143,8 +144,6 @@ void setup() {
         BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
 //        BlueDisplay1.debug("sMCUSR=", sMCUSR);
     }
-
-    initServos();
 
 #ifdef CAR_HAS_CAMERA
     pinMode(PIN_CAMERA_SUPPLY_CONTROL, OUTPUT);
@@ -157,11 +156,19 @@ void setup() {
     tone(PIN_SPEAKER, 2200, 50);
 
     // initialize motors
-#ifdef USE_TB6612_BREAKOUT_BOARD
-    RobotCarMotorControl.init(PIN_RIGHT_MOTOR_FORWARD, PIN_RIGHT_MOTOR_BACKWARD, PIN_RIGHT_MOTOR_PWM, PIN_LEFT_MOTOR_FORWARD, PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM,PIN_TWO_WD_DETECTION);
+#ifdef USE_ADAFRUIT_MOTOR_SHIELD
+    RobotCarMotorControl.init(true);
 #else
-    RobotCarMotorControl.init(PIN_TWO_WD_DETECTION);
+    RobotCarMotorControl.init(PIN_RIGHT_MOTOR_FORWARD, PIN_RIGHT_MOTOR_BACKWARD, PIN_RIGHT_MOTOR_PWM, PIN_LEFT_MOTOR_FORWARD, PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM, true);
 #endif
+    is2WDCar = !digitalRead(PIN_TWO_WD_DETECTION);
+    if (is2WDCar) {
+        RobotCarMotorControl.setFactorDegreeToCount(FACTOR_DEGREE_TO_COUNT_2WD_CAR_DEFAULT);
+    } else {
+        RobotCarMotorControl.setFactorDegreeToCount(FACTOR_DEGREE_TO_COUNT_4WD_CAR_DEFAULT);
+    }
+
+    initServos(); // must be after RobotCarMotorControl.init() since it uses is2WDCar set there.
 
 // reset all values
     resetPathData();
@@ -171,7 +178,7 @@ void setup() {
     initDistance();
 
     readVINVoltage();
-    randomSeed(sVINVoltage * 10000);
+    randomSeed(sVINVoltage * 100);
 
     delay(100);
     tone(PIN_SPEAKER, 2200, 50);
@@ -193,12 +200,14 @@ void loop() {
 #else
         delayAndLoopGUI(6000); // delay needed for millis() check above!
 #endif
-        // Set right page for reconnect
-        GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
-        if (sBootReasonWasReset) {
-            startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
-        } else {
-            startStopAutomomousDrive(true, MODE_FOLLOWER);
+        if (!BlueDisplay1.isConnectionEstablished()) {
+            // Set right page for reconnect
+            GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
+            if (sBootReasonWasReset) {
+                startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
+            } else {
+                startStopAutomomousDrive(true, MODE_FOLLOWER);
+            }
         }
     }
 
@@ -221,7 +230,7 @@ void loop() {
      * check for playing melody
      */
     if (sPlayMelody) {
-        RobotCarMotorControl.stopMotorsAndReset();
+        RobotCarMotorControl.stopMotors();
         playRandomMelody();
     }
 
@@ -231,10 +240,14 @@ void loop() {
         /*
          * Direct speed control by GUI
          */
+
         if (RobotCarMotorControl.updateMotors()) {
+#ifdef USE_ENCODER_MOTOR_CONTROL
             // At least one motor is moving here
-            rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+            rightCarMotor.synchronizeMotor(&leftCarMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+#endif
         }
+
     }
 
     if (sRuningAutonomousDrive) {
@@ -270,50 +283,64 @@ void readVINVoltage() {
  */
 void playRandomMelody() {
 // this flag may be reseted by checkAndHandleEvents()
-sPlayMelody = true;
-BlueDisplay1.debug("Play melody");
+    sPlayMelody = true;
+    BlueDisplay1.debug("Play melody");
 
-OCR2B = 0;
-bitWrite(TIMSK2, OCIE2B, 1);// enable interrupt for inverted pin handling
-startPlayRandomRtttlFromArrayPGM(PIN_LEFT_MOTOR_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
-while (updatePlayRtttl()) {
-    // check for pause in melody (i.e. timer disabled) and disable motor for this period
-    if ( TIMSK2 & _BV(OCIE2A)) {
-        // timer enabled
-        digitalWriteFast(PIN_LEFT_MOTOR_PWM, HIGH);// re-enable motor
-    } else {
-        // timer disabled
-        digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);// disable motor for pause in melody
+#if defined(USE_ADAFRUIT_MOTOR_SHIELD)
+    startPlayRandomRtttlFromArrayPGM(PIN_SPEAKER, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+#else
+    OCR2B = 0;
+    bitWrite(TIMSK2, OCIE2B, 1);            // enable interrupt for inverted pin handling
+    startPlayRandomRtttlFromArrayPGM(PIN_LEFT_MOTOR_FORWARD, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+#endif
+    while (updatePlayRtttl()) {
+#if ! defined(USE_ADAFRUIT_MOTOR_SHIELD)
+            // check for pause in melody (i.e. timer disabled) and disable motor for this period
+        if (TIMSK2 & _BV(OCIE2A)) {
+            // timer enabled
+            digitalWriteFast(PIN_LEFT_MOTOR_PWM, HIGH);            // re-enable motor
+        } else {
+            // timer disabled
+            digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);            // disable motor for pause in melody
+        }
+#endif
+        checkAndHandleEvents();
+        if (!sPlayMelody) {
+            BlueDisplay1.debug("Stop melody");
+            break;
+        }
     }
-    checkAndHandleEvents();
-    if (!sPlayMelody) {
-        BlueDisplay1.debug("Stop melody");
-        break;
-    }
-}
-TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
-digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
-bitWrite(TIMSK2, OCIE2B, 0);// disable interrupt
-sPlayMelody = false;
+#if ! defined(USE_ADAFRUIT_MOTOR_SHIELD)
+    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW); // disable motor
+    bitWrite(TIMSK2, OCIE2B, 0); // disable interrupt
+#endif
+    TouchButtonMelody.setValue(false, (sCurrentPage == PAGE_HOME));
+    sPlayMelody = false;
 }
 
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
-OCR2B = 0;
-bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
-tone(PIN_LEFT_MOTOR_FORWARD, aFrequency);
-delay(aDuration);
-noTone(PIN_LEFT_MOTOR_FORWARD);
-digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);// disable motor
-bitWrite(TIMSK2, OCIE2B, 0);// disable interrupt
+#if defined(USE_ADAFRUIT_MOTOR_SHIELD)
+    tone(PIN_SPEAKER, aFrequency);
+    delay(aDuration);
+    noTone(PIN_SPEAKER);
+#else
+    OCR2B = 0;
+    bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling
+    tone(PIN_LEFT_MOTOR_FORWARD, aFrequency);
+    delay(aDuration);
+    noTone (PIN_LEFT_MOTOR_FORWARD);
+    digitalWriteFast(PIN_LEFT_MOTOR_PWM, LOW);// disable motor
+    bitWrite(TIMSK2, OCIE2B, 0);// disable interrupt
+#endif
 }
 
 /*
  * set INVERTED_TONE_PIN to inverse value of TONE_PIN to avoid DC current
  */
-#ifdef USE_TB6612_BREAKOUT_BOARD
-ISR(TIMER2_COMPB_vect) {
-digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWARD));
-}
+#if ! defined(USE_ADAFRUIT_MOTOR_SHIELD)
+    ISR(TIMER2_COMPB_vect) {
+        digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWARD));
+    }
 #endif
 #endif // ENABLE_RTTTL
 
@@ -321,24 +348,24 @@ digitalWriteFast(PIN_LEFT_MOTOR_BACKWARD, !digitalReadFast(PIN_LEFT_MOTOR_FORWAR
  * Pn tilt servo stuff
  */
 #ifdef CAR_HAS_PAN_SERVO
-Servo PanServo;
+    Servo PanServo;
 #endif
 #ifdef CAR_HAS_TILT_SERVO
-Servo TiltServo;
+    Servo TiltServo;
 #endif
 
 void resetServos() {
-    DistanceServoWriteAndDelay(90);
+    DistanceServoWriteAndDelay(90, false);
 #ifdef CAR_HAS_PAN_SERVO
-    PanServo.write(90);
+        PanServo.write(90);
 #endif
 #ifdef CAR_HAS_TILT_SERVO
-    TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
+        TiltServo.write(TILT_SERVO_MIN_VALUE); // my servo makes noise at 0 degree.
 #endif
 }
 
 void initServos() {
-    if (RobotCarMotorControl.is2WDCar) {
+    if (is2WDCar) {
         // TODO store in EEPROM
         DistanceServo.attach(PIN_DISTANCE_SERVO, DISTANCE_SERVO_2WD_MIN_PULSE_WIDTH, DISTANCE_SERVO_2WD_MAX_PULSE_WIDTH);
     } else {
@@ -346,10 +373,10 @@ void initServos() {
     }
 #ifdef CAR_HAS_PAN_SERVO
 // initialize and set Laser pan servo
-    PanServo.attach(PIN_LASER_SERVO_PAN);
+        PanServo.attach(PIN_PAN_SERVO);
 #endif
 #ifdef CAR_HAS_TILT_SERVO
-    TiltServo.attach(PIN_LASER_SERVO_TILT);
+        TiltServo.attach(PIN_TILT_SERVO);
 #endif
     resetServos();
 }

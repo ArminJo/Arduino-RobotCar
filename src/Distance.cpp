@@ -12,7 +12,7 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
-
+ *
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
@@ -42,7 +42,6 @@ void initDistance() {
 #else
     initUSDistancePins(PIN_TRIGGER_OUT, PIN_ECHO_IN);
 #endif
-
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
     if (sToFDistanceSensor.VL53L1X_SensorInit() != 0) { //Begin returns 0 on a good init
@@ -100,6 +99,9 @@ void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
 #endif
     }
 
+    /*
+     * Move servo
+     */
 #ifdef USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
     /*
      * Experimental!
@@ -112,12 +114,20 @@ void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
     }
 #endif
 
-    // My servo is top down and therefore inverted
+#ifdef DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
+    // The servo is top down and therefore inverted
     aTargetDegrees = 180 - aTargetDegrees;
+#endif
     DistanceServo.write(aTargetDegrees);
+
+    /*
+     * Delay
+     */
     if (doDelay) {
+#ifdef USE_ENCODER_MOTOR_CONTROL
 // Synchronize before doing delay
-        rightEncoderMotor.synchronizeMotor(&leftEncoderMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+        rightCarMotor.synchronizeMotor(&leftCarMotor, MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
+#endif
 // Datasheet says: SG90 Micro Servo needs 100 millis per 60 degrees angle => 300 ms per 180
 // I measured: SG90 Micro Servo needs 400 per 180 degrees and 400 per 2*90 degree, but 540 millis per 9*20 degree
 // 60-80 ms for 20 degrees
@@ -170,6 +180,10 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
     int8_t tDegreeIncrement = DEGREES_PER_STEP;
     int8_t tIndex = 0;
     int8_t tIndexDelta = 1;
+
+    // mark ProcessedDistancesArray as invalid
+    sForwardDistancesInfo.ProcessedDistancesArray[0] = 0;
+
     if (sLastServoAngleInDegrees >= 180 - (START_DEGREES + 2)) {
 // values for backward scanning
         tCurrentDegrees = 180 - START_DEGREES;
@@ -243,9 +257,14 @@ void postProcessDistances() {
     unsigned int tMin = __UINT16_MAX__; // = 65535
     // scan simultaneously from 0 to 4 and 9 to 5 to prefer headmost values/indexes, if distances are the same.
     for (uint8_t i = 0; i < (NUMBER_OF_DISTANCES + 1) / 2; ++i) {
-        uint8_t tDistance = sForwardDistancesInfo.ProcessedDistancesArray[i];
         uint8_t tIndex = i;
         for (uint8_t j = 0; j < 2; ++j) {
+            uint8_t tDistance;
+            if (sForwardDistancesInfo.ProcessedDistancesArray[0] != 0) {
+                tDistance = sForwardDistancesInfo.ProcessedDistancesArray[tIndex];
+            } else {
+                tDistance = sForwardDistancesInfo.RawDistancesArray[tIndex];
+            }
             if (tDistance >= tMax) {
                 tMax = tDistance;
                 sForwardDistancesInfo.IndexOfMaxDistance = tIndex;
@@ -257,7 +276,6 @@ void postProcessDistances() {
                 sForwardDistancesInfo.MinDistance = tDistance;
             }
             tIndex = STEPS_PER_SCAN - i;
-            tDistance = sForwardDistancesInfo.ProcessedDistancesArray[tIndex];
         }
     }
 }
@@ -280,6 +298,9 @@ void checkAndShowDistancePeriodically(uint16_t aPeriodMillis) {
     }
 }
 
+/*
+ * Timeout is DISTANCE_TIMEOUT_CM (1 meter)
+ */
 unsigned int getDistanceAsCentiMeter() {
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
     if (sScanMode != SCAN_MODE_US) {

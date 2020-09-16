@@ -35,7 +35,9 @@ uint8_t sCurrentPage;
 BDButton TouchButtonBackSmall;
 BDButton TouchButtonBack;
 BDButton TouchButtonNextPage;
+#ifdef USE_ENCODER_MOTOR_CONTROL
 BDButton TouchButtonCalibrate;
+#endif
 
 BDButton TouchButtonRobotCarStartStop;
 //bool sRobotCarMoving; // main start flag. If true motors are running and will be updated by main loop.
@@ -82,7 +84,7 @@ void delayAndLoopGUI(uint16_t aDelayMillis) {
 void loopGUI(void) {
 
     // do not show anything during motor speed ramps
-    if (RobotCarMotorControl.isState(MOTOR_STATE_STOPPED) || RobotCarMotorControl.isState(MOTOR_STATE_FULL_SPEED)) {
+    if (RobotCarMotorControl.isStopped() || RobotCarMotorControl.isState(MOTOR_STATE_FULL_SPEED)) {
 
         if (sCurrentPage == PAGE_HOME) {
             loopHomePage();
@@ -100,24 +102,27 @@ void loopGUI(void) {
 
             // For Home and Test page
             if (sCurrentPage != PAGE_AUTOMATIC_CONTROL) {
-                displayVelocitySliderValues();
                 checkAndShowDistancePeriodically(DISTANCE_DISPLAY_PERIOD_MILLIS);
 
-                if (EncoderMotor::MotorValuesHaveChanged) {
-                    EncoderMotor::MotorValuesHaveChanged = false;
+                if (PWMDcMotor::MotorValuesHaveChanged) {
+                    PWMDcMotor::MotorValuesHaveChanged = false;
                     printMotorValues();
+#ifdef USE_ENCODER_MOTOR_CONTROL
                     if (sShowDebug && sCurrentPage == PAGE_TEST) {
                         printMotorDebugValues();
                     }
+#endif
                 }
-
+#ifdef USE_ENCODER_MOTOR_CONTROL
+                displayVelocitySliderValues();
                 /*
                  * Print changed tick values
                  */
                 if (EncoderMotor::EncoderTickCounterHasChanged) {
                     EncoderMotor::EncoderTickCounterHasChanged = false;
-                    printDistanceValues();
+                    printMotorDistanceValues();
                 }
+#endif
             }
         }
     }
@@ -142,7 +147,7 @@ void startStopRobotCar(bool aRobotCarIsMoving) {
             /*
              * Start car to last speed slider value
              */
-            RobotCarMotorControl.setCurrentSpeedCompensated(sLastSpeedSliderValue, sRobotCarDirection);
+            RobotCarMotorControl.setSpeedCompensated(sLastSpeedSliderValue, sRobotCarDirection);
         }
         tSpeedSliderValue = sLastSpeedSliderValue;
     } else {
@@ -152,7 +157,7 @@ void startStopRobotCar(bool aRobotCarIsMoving) {
         if (sRuningAutonomousDrive) {
             startStopAutomomousDrive(false);
         }
-        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+        RobotCarMotorControl.stopMotors();
         tSpeedSliderValue = 0;
     }
 
@@ -167,11 +172,13 @@ void doRobotCarStartStop(BDButton * aTheTouchedButton, int16_t aRobotCarIsMoving
     startStopRobotCar(aRobotCarIsMoving);
 }
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
 void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue) {
-    EncoderMotor::calibrate();
+    RobotCarMotorControl.calibrate();
     printMotorValues();
     printMotorDebugValues();
 }
+#endif
 
 /*
  * Minimum Speed is 30 for USB power and no load, 50 for load
@@ -183,8 +190,9 @@ void doSpeedSlider(BDSlider * aTheTouchedSlider, uint16_t aValue) {
 
         if (RobotCarMotorControl.isStopped()) {
             startStopRobotCar(true);
+        } else {
+            RobotCarMotorControl.setSpeedCompensated(aValue, sRobotCarDirection);
         }
-        RobotCarMotorControl.setCurrentSpeedCompensated(aValue, sRobotCarDirection);
     }
 }
 
@@ -192,22 +200,24 @@ void doUSServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue) {
     DistanceServoWriteAndDelay(aValue);
 }
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
 /*
  * Display velocity as slider values
  */
 void displayVelocitySliderValues() {
-    EncoderMotor * tMotorInfo = &leftEncoderMotor;
+    EncoderMotor * tMotorInfo = &leftCarMotor;
     BDSlider * tSliderPtr = &SliderSpeedLeft;
     uint16_t tXPos = 0;
     for (int i = 0; i < 2; ++i) {
         if (EncoderMotor::EncoderTickCounterHasChanged) {
             tSliderPtr->setValueAndDrawBar(tMotorInfo->CurrentVelocity);
         }
-        tMotorInfo = &rightEncoderMotor;
+        tMotorInfo = &rightCarMotor;
         tSliderPtr = &SliderSpeedRight;
         tXPos += BUTTON_WIDTH_16 + 4;
     }
 }
+#endif
 
 /*
  * Stops car and change direction
@@ -217,7 +227,7 @@ void doSetDirection(BDButton * aTheTouchedButton, int16_t aValue) {
 
 // Stop fixed directions and turns using RobotCarMotorControl
     if (!RobotCarMotorControl.isStopped()) {
-        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+        RobotCarMotorControl.stopMotors();
     }
 // Stop direct movement by slider
     startStopRobotCar(false);
@@ -310,8 +320,10 @@ void initRobotCarDisplay(void) {
     TouchButtonBackSmall.init(BUTTON_WIDTH_4_POS_4, 0, BUTTON_WIDTH_4, BUTTON_HEIGHT_6, COLOR_RED, F("Back"), TEXT_SIZE_22,
             FLAG_BUTTON_DO_BEEP_ON_TOUCH, -1, &GUISwitchPages);
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
     TouchButtonCalibrate.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_RED, F("CAL"),
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 1, &doCalibrate);
+#endif
 
 // Direction Button value true is forward, false is backward BUT 0 is DIRECTION_FORWARD!!!
     TouchButtonDirection.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR_BLACK, F("\x88"),
@@ -338,24 +350,25 @@ void initRobotCarDisplay(void) {
      * Right sliders
      * From right to left:
      * 1. Scaled (0 to 180) US position slider
-     * 2. Scaled (0 to 200) US distance slider. If IR distance or pan and tilt servos existent, the it is a small one without cm units.
-     * 3. Scaled (0 to 200) IR distance slider - small. Not displayed on home page if pan and tilt servos existent.
+     * 2. Scaled (0 to 200) small US distance slider. If IR distance or pan and tilt servos existent, the it is a small one without cm units.
+     * 3. Scaled (0 to 200) small IR distance slider / big US small US distance slider. Not displayed on home page if pan and tilt servos existent.
      * 3. Pan position slider. If tilt servo is existent then at position 3.
      * 4. Tilt position slider.
      *
-     * Position X values determine the left edge
+     * Position X values determine the RIGHT edge + 1. The width of the slider must be subtracted for SliderX parameter.
      */
-#define POS_X_US_POSITION_SLIDER    BUTTON_WIDTH_6_POS_6 // 280
-#define POS_X_US_DISTANCE_SLIDER    ((BUTTON_WIDTH_6_POS_6 - (BUTTON_WIDTH_10 / 2))) // -14 -> 266
-#define POS_X_THIRD_SLIDER          (POS_X_US_DISTANCE_SLIDER - (BUTTON_WIDTH_10 / 2))  // -14 -> 252
+#define POS_X_US_POSITION_SLIDER    LAYOUT_320_WIDTH // 320
+#define POS_X_US_DISTANCE_SLIDER    ((POS_X_US_POSITION_SLIDER - BUTTON_WIDTH_6) - 2) // - (width of US position slider + 2 for gap)
+#define POS_X_THIRD_SLIDER          (POS_X_US_DISTANCE_SLIDER - (BUTTON_WIDTH_10 / 2))  // - (width of small US distance slider + 2 for gap)
 #if  defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)
-#define POS_X_PAN_SLIDER            (POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_12 - 2)  //
-#define POS_X_TILT_SLIDER           (POS_X_THIRD_SLIDER - BUTTON_WIDTH_6) // 208
+#define POS_X_PAN_SLIDER            (POS_X_THIRD_SLIDER)  //
+#define POS_X_TILT_SLIDER           ((POS_X_THIRD_SLIDER - BUTTON_WIDTH_12) - 4) // - width of pan slider + 4 for gap
 #else
-#define POS_X_PAN_SLIDER            (POS_X_THIRD_SLIDER - BUTTON_WIDTH_12 - 2)
+#define POS_X_PAN_SLIDER            ((POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_10 - 2) // - width of 1 big or 2 small sliders + 2 for gap
 #endif
 
-    SliderUSPosition.init(POS_X_US_POSITION_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
+    SliderUSPosition.init(POS_X_US_POSITION_SLIDER - BUTTON_WIDTH_6, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6, US_SLIDER_SIZE, 90, 90,
+    COLOR_YELLOW,
     SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
     SliderUSPosition.setBarThresholdColor(COLOR_BLUE);
     SliderUSPosition.setScaleFactor(180.0 / US_SLIDER_SIZE); // Values from 0 to 180 degrees
@@ -369,7 +382,7 @@ void initRobotCarDisplay(void) {
      */
 #if defined(US_DISTANCE_SLIDER_IS_SMALL)
     // Small US distance slider with captions and without cm units
-    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
     DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
     SliderUSDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW, 2, COLOR_BLACK,
@@ -379,9 +392,9 @@ void initRobotCarDisplay(void) {
     SliderUSDistance.setPrintValueProperties(11, FLAG_SLIDER_CAPTION_ALIGN_LEFT | FLAG_SLIDER_CAPTION_BELOW,
             4 + TEXT_SIZE_10_HEIGHT, COLOR_BLACK, COLOR_WHITE);
 #else
-    // Big US distance slider without caption but with cm units
-    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, BUTTON_WIDTH_10, DISTANCE_SLIDER_SIZE,
-            DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
+    // Big US distance slider without caption but with cm units POS_X_THIRD_SLIDER because it is the position of the left edge
+    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, BUTTON_WIDTH_10,
+    DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
     SliderUSDistance.setValueUnitString("cm");
 #endif
@@ -393,7 +406,7 @@ void initRobotCarDisplay(void) {
      */
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     // Small IR distance slider with captions and without cm units
-    SliderIRDistance.init(POS_X_THIRD_SLIDER, SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
+    SliderIRDistance.init(POS_X_THIRD_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_TOP_MARGIN + BUTTON_HEIGHT_8, (BUTTON_WIDTH_10 / 2) - 2,
     DISTANCE_SLIDER_SIZE, DISTANCE_TIMEOUT_CM, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
             FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
     SliderIRDistance.setScaleFactor(2); // Slider is virtually 2 times larger, values were divided by 2
@@ -410,7 +423,7 @@ void initRobotCarDisplay(void) {
 
 #ifdef CAR_HAS_PAN_SERVO
     // left of SliderUSPosition
-    SliderPan.init(POS_X_PAN_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
+    SliderPan.init(POS_X_PAN_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90, COLOR_YELLOW,
     SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doHorizontalServoPosition);
     SliderPan.setBarThresholdColor(COLOR_BLUE);
     // scale slider values
@@ -419,7 +432,7 @@ void initRobotCarDisplay(void) {
 #endif
 
 #ifdef CAR_HAS_TILT_SERVO
-    SliderTilt.init(POS_X_TILT_SLIDER, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, TILT_SERVO_MIN_VALUE, COLOR_YELLOW,
+    SliderTilt.init(POS_X_TILT_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, TILT_SERVO_MIN_VALUE, COLOR_YELLOW,
     SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doVerticalServoPosition);
     SliderTilt.setBarThresholdColor(COLOR_BLUE);
     // scale slider values
@@ -476,7 +489,7 @@ void checkForLowVoltage() {
     }
     if (sLowVoltageCount > 2) {
         // Here more than 2 consecutive times (for 6 seconds) low voltage detected
-        RobotCarMotorControl.stopMotorsAndReset();
+        RobotCarMotorControl.stopMotors();
 
         if (BlueDisplay1.isConnectionEstablished()) {
             drawCommonGui();
@@ -521,24 +534,25 @@ void readCheckAndPrintVinPeriodically() {
 }
 
 void printMotorValues() {
-
 // position below caption of speed slider
     uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 25 + TEXT_SIZE_11_HEIGHT;
-    sprintf_P(sStringBuffer, PSTR("min. %3d %3d"), leftEncoderMotor.MinSpeed, rightEncoderMotor.MinSpeed);
+    sprintf_P(sStringBuffer, PSTR("min. %3d %3d"), leftCarMotor.StartSpeed, rightCarMotor.StartSpeed);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("max. %3d %3d"), leftEncoderMotor.MaxSpeed, rightEncoderMotor.MaxSpeed);
+    sprintf_P(sStringBuffer, PSTR("max. %3d %3d"), leftCarMotor.DriveSpeed, rightCarMotor.DriveSpeed);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("comp. %2d  %2d"), leftEncoderMotor.SpeedCompensation, rightEncoderMotor.SpeedCompensation);
+    sprintf_P(sStringBuffer, PSTR("comp. %2d  %2d"), leftCarMotor.SpeedCompensation, rightCarMotor.SpeedCompensation);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
+#ifdef USE_ENCODER_MOTOR_CONTROL
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("speed%3d %3d"), leftEncoderMotor.CurrentSpeed, rightEncoderMotor.CurrentSpeed);
+    sprintf_P(sStringBuffer, PSTR("speed%3d %3d"), leftCarMotor.CurrentSpeed, rightCarMotor.CurrentSpeed);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
-
+#endif
 }
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
 /*
  * Is called after printMotorValues, so we can take the Draw parameter from it
  */
@@ -547,35 +561,33 @@ void printMotorDebugValues() {
      * Debug info
      */
     uint16_t tYPos = SPEED_SLIDER_SIZE / 2 + 25 + TEXT_SIZE_11_HEIGHT + (4 * TEXT_SIZE_11);
-    sprintf_P(sStringBuffer, PSTR("ramp1%3d %3d"), leftEncoderMotor.DistanceCountAfterRampUp,
-            rightEncoderMotor.DistanceCountAfterRampUp);
+    sprintf_P(sStringBuffer, PSTR("ramp1%3d %3d"), leftCarMotor.DistanceCountAfterRampUp, rightCarMotor.DistanceCountAfterRampUp);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("endSp%3d %3d"), leftEncoderMotor.SpeedAtTargetCountReached,
-            rightEncoderMotor.SpeedAtTargetCountReached);
+    sprintf_P(sStringBuffer, PSTR("endSp%3d %3d"), leftCarMotor.SpeedAtTargetCountReached, rightCarMotor.SpeedAtTargetCountReached);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("debug%3d %3d"), leftEncoderMotor.Debug, rightEncoderMotor.Debug);
+    sprintf_P(sStringBuffer, PSTR("debug%3d %3d"), leftCarMotor.Debug, rightCarMotor.Debug);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("dcnt %3d %3d"), leftEncoderMotor.DebugCount, rightEncoderMotor.DebugCount);
+    sprintf_P(sStringBuffer, PSTR("dcnt %3d %3d"), leftCarMotor.DebugCount, rightCarMotor.DebugCount);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
     tYPos += TEXT_SIZE_11;
-    sprintf_P(sStringBuffer, PSTR("tcnt %3d %3d"), leftEncoderMotor.LastTargetDistanceCount,
-            rightEncoderMotor.LastTargetDistanceCount);
+    sprintf_P(sStringBuffer, PSTR("tcnt %3d %3d"), leftCarMotor.LastTargetDistanceCount, rightCarMotor.LastTargetDistanceCount);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer);
 }
 
-void printDistanceValues() {
+void printMotorDistanceValues() {
     uint16_t tYPos;
     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
         tYPos = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
     } else {
         tYPos = SPEED_SLIDER_SIZE / 2 + 25;
     }
-    sprintf_P(sStringBuffer, PSTR("cnt.%4d%4d"), leftEncoderMotor.EncoderCount, rightEncoderMotor.EncoderCount);
+    sprintf_P(sStringBuffer, PSTR("cnt.%4d%4d"), leftCarMotor.EncoderCount, rightCarMotor.EncoderCount);
     BlueDisplay1.drawText(BUTTON_WIDTH_6 + 4, tYPos, sStringBuffer, TEXT_SIZE_11, COLOR_BLACK, COLOR_WHITE);
 }
+#endif
 
 void showUSDistance(unsigned int aCentimeter) {
 // feedback as slider length

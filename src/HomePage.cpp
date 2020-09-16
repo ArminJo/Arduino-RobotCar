@@ -115,7 +115,7 @@ void drawHomePage(void) {
     BlueDisplay1.drawText(HEADER_X + TEXT_SIZE_22_WIDTH, (2 * TEXT_SIZE_22_HEIGHT), F("Control"));
 
     char tCarTypeString[] = "4WD";
-    if (RobotCarMotorControl.is2WDCar) {
+    if (is2WDCar) {
         tCarTypeString[0] = '2';
     }
 
@@ -135,7 +135,9 @@ void drawHomePage(void) {
     TouchButtonNextPage.drawButton();
 
     TouchButtonDirection.drawButton();
+#ifdef USE_ENCODER_MOTOR_CONTROL
     TouchButtonCalibrate.drawButton();
+#endif
 
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
     SliderUSPosition.drawSlider();
@@ -154,16 +156,18 @@ void drawHomePage(void) {
 #endif
 
     SliderSpeed.drawSlider();
+#ifdef USE_ENCODER_MOTOR_CONTROL
     SliderSpeedRight.drawSlider();
     SliderSpeedLeft.drawSlider();
-
-    printMotorValues();
-
+#endif
+    PWMDcMotor::MotorValuesHaveChanged = true; // trigger drawing of values
 }
 
 void startHomePage(void) {
     TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_4);
+#ifdef USE_ENCODER_MOTOR_CONTROL
     TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_4);
+#endif
     TouchButtonNextPage.setCaption(F("Automatic\nControl"));
 
     drawHomePage();
@@ -174,7 +178,9 @@ void loopHomePage(void) {
 
 void stopHomePage(void) {
     TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5);
+#ifdef USE_ENCODER_MOTOR_CONTROL
     TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2);
+#endif
     startStopRobotCar(false);
 }
 

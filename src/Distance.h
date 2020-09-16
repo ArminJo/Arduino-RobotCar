@@ -23,6 +23,12 @@
 #include <Servo.h>
 
 /*
+ * Comment this out / enable this if the distance servo is mounted head down to detect small obstacles.
+ */
+//#define DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
+extern Servo DistanceServo;
+
+/*
  * Constants for fillAndShowForwardDistancesInfo(), doWallDetection etc.
  */
 #define NUMBER_OF_DISTANCES 10
@@ -45,7 +51,7 @@ struct ForwardDistancesInfoStruct {
     uint8_t RawDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
     uint8_t ProcessedDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
     uint8_t IndexOfMaxDistance;
-    uint8_t IndexOfMinDistance;
+    uint8_t IndexOfMinDistance; // do not take first (0) and last index for minimum (we may measure the distance to our wheel there)
     uint8_t MaxDistance;
     uint8_t MinDistance;
     // 0 degree => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
@@ -56,7 +62,6 @@ extern ForwardDistancesInfoStruct sForwardDistancesInfo;
 
 extern bool sDoSlowScan;
 extern uint8_t sLastServoAngleInDegrees; // needed for optimized delay for servo repositioning
-extern Servo DistanceServo;
 
 extern int sLastDecisionDegreesToTurnForDisplay;
 extern int sNextDegreesToTurn;

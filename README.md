@@ -12,7 +12,22 @@ Just overwrite the function doUserCollisionDetection() to test your own skill.
 
 You may also overwrite the function fillAndShowForwardDistancesInfo(), if you use your own scanning method.
 
-## Wall detection
+# Compile options
+
+| Option | Default | File | Description |
+|-|-|-|-|
+| `USE_ENCODER_MOTOR_CONTROL` | disabled | PWMDCMotor.h | Use fork light barrier and an attached encoder disc to enable motor distance and speed sensing. |
+| `USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD` |  enabled | PWMDcMotor.h | Saves 694 bytes program memory  |
+| `USE_US_SENSOR_1_PIN_MODE` | disabled | RobotCar.h | Use modified HC-SR04 modules or HY-SRF05 ones.</br>Modify HC-SR04 by connecting 10kOhm between echo and trigger and then use only trigger pin. |
+| `CAR_HAS_IR_DISTANCE_SENSOR` | disabled | RobotCar.h | Use Sharp GP2Y0A21YK / 1080 IR distance sensor. |
+| `CAR_HAS_TOF_DISTANCE_SENSOR` | disabled | RobotCar.h | Use VL53L1X TimeOfFlight distance sensor. |
+| `CAR_HAS_CAMERA` | disabled | RobotCar.h | Enables the `Camera` button for the `PIN_CAMERA_SUPPLY_CONTROL` pin. |
+| `CAR_HAS_LASER` | disabled | RobotCar.h | Enables the `Laser` button for the `PIN_LASER_OUT` / `LED_BUILTIN` pin. |
+| `CAR_HAS_PAN_SERVO` | disabled | RobotCar.h | Enables the pan slider for the `PanServo` at the `PIN_PAN_SERVO` pin. |
+| `CAR_HAS_TILT_SERVO` | disabled | RobotCar.h | Enables the tilt slider for the `TiltServo` at the `PIN_TILT_SERVO` pin.. |
+| `DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN` | disabled | Distance.h | The distance servo is mounted head down to detect even small obstacles. |
+
+# Wall detection
 The problem of the ultrasonic values is, that you can only detect a wall with the ultrasonic sensor if the angle of the wall relative to sensor axis is approximately between 70 and 110 degree.
 For other angels the reflected ultrasonic beam can not not reach the receiver which leads to unrealistic great distances.<br/>
 Therefore I take samples every 18 degrees and if I get 2 adjacent short (<DISTANCE_FOR_WALL_DETECT) distances, I assume a wall determined by these 2 samples.

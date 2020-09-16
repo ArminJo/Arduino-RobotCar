@@ -92,7 +92,7 @@ void resetPathData() {
         yPathDelta[i] = 0;
     }
     // to start new path in right direction
-    sNextDegreesToTurn = 0;
+//    sNextDegreesToTurn = 0;
     sLastDegreesTurned = 0;
 }
 

@@ -7,7 +7,13 @@
 
 # This is the name of the workflow, visible on GitHub UI.
 name: TestCompile
-on: push
+on:
+  push: # see: https://help.github.com/en/actions/reference/events-that-trigger-workflows#pull-request-event-pull_request
+    paths:
+    - '**.cpp'
+    - '**.h'
+    - '**TestCompile.yml'
+  pull_request:
 jobs:
   build:
     name: Test compiling examples for UNO
@@ -26,27 +32,36 @@ jobs:
         include:
           - arduino-boards-fqbn: arduino:avr:uno
             build-properties:
-              BD_RobotCar:
+              RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
+                -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
+                -DUSE_ADAFRUIT_MOTOR_SHIELD
 
-          - arduino-boards-fqbn: arduino:avr:uno|TB6612Breakout # UNO board with ToF distance sensor
+          - arduino-boards-fqbn: arduino:avr:uno|TB6612Breakout # Nano board with TB6612 breakout board
             build-properties:
-              BD_RobotCar:
+              RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
-                -DUSE_TB6612_BREAKOUT_BOARD
-                -mcall-prologues
+                -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
+                -DCAR_HAS_PAN_SERVO
+                -DCAR_HAS_TILT_SERVO
+                -DCAR_HAS_CAMERA
+                -DCAR_HAS_LASER
+                -DENABLE_RTTTL
+                -mcall-prologues # reduces size by 870 bytes
 
           - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
             build-properties:
-              BD_RobotCar:
+              RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
+                -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DCAR_HAS_TOF_DISTANCE_SENSOR
+                -DUSE_ADAFRUIT_MOTOR_SHIELD
                 -mcall-prologues
 
     steps:
@@ -58,7 +73,14 @@ jobs:
         with:
           repository: ArminJo/Arduino-BlueDisplay
           ref: master
-          path: CustomLibrary # must contain string "Custom"
+          path: CustomLibrary_BD # must contain string "Custom"
+
+      - name: Checkout new PWMMotorControl library
+        uses: actions/checkout@v2
+        with:
+          repository: ArminJo/PWMMotorControl
+          ref: master
+          path: CustomLibrary_PWM # must contain string "Custom"
 
       # Use the arduino-test-compile script, because it is faster
       - name: Compile all examples using the bash script arduino-test-compile.sh

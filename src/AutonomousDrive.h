@@ -24,33 +24,33 @@
 /*
  * Different autonomous driving modes
  */
-#define MODE_MANUAL_DRIVE 0
-#define MODE_AUTONOMOUS_DRIVE_BUILTIN 1
-#define MODE_AUTONOMOUS_DRIVE_USER 2
-#define MODE_FOLLOWER 3
+#define MODE_MANUAL_DRIVE               0
+#define MODE_AUTONOMOUS_DRIVE_BUILTIN   1
+#define MODE_AUTONOMOUS_DRIVE_USER      2
+#define MODE_FOLLOWER                   3
 extern uint8_t sDriveMode;
 
 /*
  * Step modes for MODE_AUTONOMOUS_DRIVE
  */
-#define MODE_CONTINUOUS 0
-#define MODE_STEP_TO_NEXT_TURN 1 // stop before a turn
-#define MODE_SINGLE_STEP 2 // stop after CENTIMETER_PER_RIDE_2
+#define MODE_CONTINUOUS         0
+#define MODE_STEP_TO_NEXT_TURN  1 // stop before a turn
+#define MODE_SINGLE_STEP        2 // stop after CENTIMETER_PER_RIDE_2
 extern uint8_t sStepMode;
 extern bool sDoStep;
 
-#define FOLLOWER_MIN_DISTANCE  22
-#define FOLLOWER_MAX_DISTANCE  30
-#define FOLLOWER_RESCAN_DISTANCE  45 // search if target moved to side
+#define FOLLOWER_MIN_DISTANCE       22
+#define FOLLOWER_MAX_DISTANCE       30
+#define FOLLOWER_RESCAN_DISTANCE    50 // search if target moved to side
 
 /*
  * Different result types acquired at one scan
  */
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-#define SCAN_MODE_MINIMUM  0
-#define SCAN_MODE_MAXIMUM  1
-#define SCAN_MODE_US    2
-#define SCAN_MODE_IR    3
+#define SCAN_MODE_MINIMUM   0
+#define SCAN_MODE_MAXIMUM   1
+#define SCAN_MODE_US        2
+#define SCAN_MODE_IR        3
 extern uint8_t sScanMode;
 #endif
 
@@ -62,7 +62,9 @@ extern uint8_t sScanMode;
 extern uint8_t sCentimeterPerScanTimesTwo; // Statistics
 extern uint8_t sCentimeterPerScan; // = sCentimeterPerScanTimesTwo / 2
 
-void postProcessAndCollisionDetection();
+int postProcessAndCollisionDetection();
+
+unsigned int getDistanceAndPlayTone();
 
 void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode = MODE_MANUAL_DRIVE);
 void driveAutonomousOneStep();

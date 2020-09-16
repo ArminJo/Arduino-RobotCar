@@ -107,6 +107,10 @@ void stopTestPage(void);
 
 // from HomePage
 extern BDButton TouchButtonMelody;
+#ifdef ENABLE_RTTTL
+extern bool sPlayMelody;
+#endif
+
 extern void doHorizontalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue);
 extern void doVerticalServoPosition(BDSlider * aTheTouchedSlider, uint16_t aValue);
 
@@ -138,8 +142,10 @@ void doRobotCarStartStop(BDButton * aTheTochedButton, int16_t aValue);
 extern BDButton TouchButtonDirection;
 void doChangeDirection(BDButton * aTheTouchedButton, int16_t aValue);
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
 extern BDButton TouchButtonCalibrate;
 void doCalibrate(BDButton * aTheTouchedButton, int16_t aValue);
+#endif
 
 extern BDSlider SliderSpeed;
 extern uint16_t sLastSpeedSliderValue;
@@ -161,7 +167,9 @@ extern BDSlider SliderPan;
 extern BDSlider SliderTilt;
 #endif
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
 void displayVelocitySliderValues();
+#endif
 
 void drawCommonGui(void);
 
@@ -176,8 +184,10 @@ void rotate(int16_t aRotationDegrees, bool inPlace = true);
 void showDistance(int aCentimeter);
 
 void printMotorValues();
+#ifdef USE_ENCODER_MOTOR_CONTROL
 void printMotorDebugValues();
-void printDistanceValues();
+void printMotorDistanceValues();
+#endif
 
 void readAndPrintVin();
 void readCheckAndPrintVinPeriodically();

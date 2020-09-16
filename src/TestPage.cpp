@@ -55,22 +55,22 @@ void doShowDebug(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 
 void doRotation(BDButton * aTheTouchedButton, int16_t aValue) {
-    RobotCarMotorControl.initRotateCar(aValue, sRobotCarDirection);
+    RobotCarMotorControl.initRotateCar(aValue, sRobotCarDirection, true);
 }
 
 /*
- * Store user speed input as MaxSpeed
+ * Store user speed input as DriveSpeed
  */
 void doStoreSpeed(float aValue) {
     uint16_t tValue = aValue;
     if (tValue > 10 && tValue < 256) {
         // must use value for compensation not compensated value
-        rightEncoderMotor.MaxSpeed = tValue;
-        rightEncoderMotor.writeEeprom();
+        rightCarMotor.DriveSpeed = tValue;
+        rightCarMotor.writeMotorvaluesToEeprom();
 
         // use the same value here !
-        leftEncoderMotor.MaxSpeed = tValue;
-        leftEncoderMotor.writeEeprom();
+        leftCarMotor.DriveSpeed = tValue;
+        leftCarMotor.writeMotorvaluesToEeprom();
     }
     printMotorValues();
 }
@@ -79,15 +79,15 @@ void doStoreSpeed(float aValue) {
  * Request speed value as number
  */
 void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
-    BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Max speed [11-255]", sLastSpeedSliderValue);
+    BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Drive speed [11-255]", sLastSpeedSliderValue);
 }
 
 /*
  * stop and reset motors
  */
 void doReset(BDButton * aTheTouchedButton, int16_t aValue) {
-    RobotCarMotorControl.stopMotorsAndReset();
     startStopRobotCar(false);
+    RobotCarMotorControl.resetControlValues();
 }
 
 void initTestPage(void) {
@@ -141,7 +141,6 @@ void drawTestPage(void) {
     TouchButtonBack.drawButton();
 
     TouchButtonDirection.drawButton();
-    TouchButtonCalibrate.drawButton();
     TouchButtonDebug.drawButton();
 
     TouchButton5cm.drawButton();
@@ -156,8 +155,10 @@ void drawTestPage(void) {
     TouchButton360Degree.drawButton();
 
     SliderSpeed.drawSlider();
+#ifdef USE_ENCODER_MOTOR_CONTROL
     SliderSpeedRight.drawSlider();
     SliderSpeedLeft.drawSlider();
+#endif
     TouchButtonGetAndStoreSpeed.drawButton();
 
     SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
@@ -167,11 +168,10 @@ void drawTestPage(void) {
 #  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     SliderIRDistance.drawSlider();
 #  endif
-    printMotorValues();
-    if (sShowDebug) {
-        printMotorDebugValues();
-    }
-    printDistanceValues();
+#ifdef USE_ENCODER_MOTOR_CONTROL
+    TouchButtonCalibrate.drawButton();
+#endif
+    PWMDcMotor::MotorValuesHaveChanged = true; // trigger drawing of values
 }
 
 /*
