@@ -18,6 +18,7 @@ You may also overwrite the function fillAndShowForwardDistancesInfo(), if you us
 |-|-|-|-|
 | `USE_ENCODER_MOTOR_CONTROL` | disabled | PWMDCMotor.h | Use fork light barrier and an attached encoder disc to enable motor distance and speed sensing. |
 | `USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD` |  enabled | PWMDcMotor.h | Saves 694 bytes program memory  |
+| `CAR_HAS_4_WHEELS` | `CAR_HAS_2_WHEELS` | RobotCar.h | Use modified formula dor turning the car. |
 | `USE_US_SENSOR_1_PIN_MODE` | disabled | RobotCar.h | Use modified HC-SR04 modules or HY-SRF05 ones.</br>Modify HC-SR04 by connecting 10kOhm between echo and trigger and then use only trigger pin. |
 | `CAR_HAS_IR_DISTANCE_SENSOR` | disabled | RobotCar.h | Use Sharp GP2Y0A21YK / 1080 IR distance sensor. |
 | `CAR_HAS_TOF_DISTANCE_SENSOR` | disabled | RobotCar.h | Use VL53L1X TimeOfFlight distance sensor. |
@@ -26,6 +27,9 @@ You may also overwrite the function fillAndShowForwardDistancesInfo(), if you us
 | `CAR_HAS_PAN_SERVO` | disabled | RobotCar.h | Enables the pan slider for the `PanServo` at the `PIN_PAN_SERVO` pin. |
 | `CAR_HAS_TILT_SERVO` | disabled | RobotCar.h | Enables the tilt slider for the `TiltServo` at the `PIN_TILT_SERVO` pin.. |
 | `DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN` | disabled | Distance.h | The distance servo is mounted head down to detect even small obstacles. |
+| `MONITOR_LIPO_VOLTAGE` | disabled | RobotCar.h | Shows VIN voltage and monitors it for undervoltage. Requires 2 additional resistors at pin A2. |
+| `VIN_VOLTAGE_CORRECTION` | undefined | RobotCar.h | Voltage to be substracted from VIN voltage. E.g. if there is a series diode between LIPO and VIN set it to 0.8. |
+
 
 # Wall detection
 The problem of the ultrasonic values is, that you can only detect a wall with the ultrasonic sensor if the angle of the wall relative to sensor axis is approximately between 70 and 110 degree.
