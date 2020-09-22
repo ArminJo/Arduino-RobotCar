@@ -53,14 +53,17 @@ public:
     void setValuesForFixedDistanceDriving(uint8_t aStartSpeed, uint8_t aDriveSpeed, int8_t aSpeedCompensationRight);
 #ifdef USE_ENCODER_MOTOR_CONTROL
     void calibrate();
-    void waitForDriveSpeed();
 #else
     // makes no sense for encoder motor
     void setDistanceToTimeFactorForFixedDistanceDriving(uint16_t aDistanceToTimeFactor);
 #endif
 
+#ifdef SUPPORT_RAMP_UP
     void initRampUp(uint8_t aRequestedDirection = DIRECTION_FORWARD);
+    void waitForDriveSpeed();
+#endif
     void initRampUpAndWaitForDriveSpeed(uint8_t aRequestedDirection = DIRECTION_FORWARD,  void (*aLoopCallback)(void) = NULL);
+
 
     /*
      * Functions for moving a fixed distance

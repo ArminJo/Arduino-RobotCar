@@ -42,6 +42,7 @@ jobs:
           - arduino-boards-fqbn: arduino:avr:uno|TB6612Breakout # Nano board with TB6612 breakout board
             build-properties:
               RobotCarBlueDisplay:
+                -DUSE_LAYOUT_FOR_NANO
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
