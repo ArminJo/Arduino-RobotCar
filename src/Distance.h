@@ -36,6 +36,12 @@ extern Servo DistanceServo;
 #define STEPS_PER_SCAN      (NUMBER_OF_DISTANCES - 1) // -> 162 degrees for 18 DEGREES_PER_STEP, 153 for 17 degrees
 #define START_DEGREES       ((180 - (DEGREES_PER_STEP * STEPS_PER_SCAN)) / 2) // 9 for 18, 13,5 for 17 - we need it symmetrical in the 180 degrees range
 
+#define DISTANCE_TIMEOUT_CM_FOLLOWER            130 // do not measure and process distances greater than 130 cm
+#define DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE    100 // do not measure and process distances greater than 100 cm
+
+#define DISTANCE_TIMEOUT_COLOR COLOR_CYAN
+#define DISTANCE_DISPLAY_PERIOD_MILLIS 500
+
 // for future use maybe
 //#define SERVO_CURRENT_LOW_THRESHOLD 100
 //#define SERVO_INITIAL_DELAY 5
@@ -57,11 +63,14 @@ struct ForwardDistancesInfoStruct {
     uint8_t ProcessedDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
     uint8_t IndexOfMaxDistance;
     uint8_t IndexOfMinDistance; // do not take first (0) and last index for minimum (we may measure the distance to our wheel there)
+    uint8_t IndexOfDistanceGreaterThanThreshold;
     uint8_t MaxDistance;
     uint8_t MinDistance;
     // 0 degree => wall parallel to side of car. 90 degrees => wall in front of car. degrees of wall -> degrees to turn.
     int8_t WallRightAngleDegrees;
     int8_t WallLeftAngleDegrees;
+//    uint8_t WallRightDistance;
+//    uint8_t WallLeftDistance;
 };
 extern ForwardDistancesInfoStruct sForwardDistancesInfo;
 
@@ -74,9 +83,12 @@ extern int sLastDegreesTurned;
 
 void initDistance();
 void DistanceServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
-unsigned int getDistanceAsCentiMeter(bool doShow = false);
+unsigned int getDistanceAsCentiMeter(bool doShow = false, uint8_t aDistanceTimeout = DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE);
+int scanForTarget();
 bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan = false);
-void postProcessDistances();
+void doWallDetection();
+int doBuiltInCollisionDetection();
+void postProcessDistances(uint8_t aDistanceThreshold);
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
 #include "vl53l1x_class.h"

@@ -8,6 +8,9 @@
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
  *  Just overwrite the 2 functions myOwnFillForwardDistancesInfo() and doUserCollisionDetection() to test your own skill.
  *
+ *  If Bluetooth is not connected, after TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (10 seconds) the car starts demo mode.
+ *  After power up it runs in follower mode and after reset it runs in autonomous drive mode.
+ *
  *  Program size of GUI is 63 percent. 27% vs. 90%.
  *
  *  Copyright (C) 2016-2020  Armin Joachimsmeyer
@@ -35,7 +38,14 @@
 #ifdef ENABLE_RTTTL
 #include <PlayRtttl.h>
 #endif
-//#include "Trace.cpp.h"
+
+/****************************************************************************
+ * Change this if you have reprogrammed the hc05 module for other baud rate
+ ***************************************************************************/
+#ifndef BLUETOOTH_BAUD_RATE
+#define BLUETOOTH_BAUD_RATE BAUD_115200
+//#define BLUETOOTH_BAUD_RATE BAUD_9600
+#endif
 
 #define VERSION_EXAMPLE "3.0"
 
@@ -87,6 +97,7 @@ int doUserCollisionDetection() {
 }
 
 /*
+ * !!! THIS WORKS ONLY WITH VERSION 8.0 OF THE OPTIBOOT BOOTLOADER !!!
  First, we need a variable to hold the reset cause that can be written before
  early sketch initialization (that might change r2), and won't be reset by the
  various initialization code.
@@ -95,9 +106,9 @@ int doUserCollisionDetection() {
 uint8_t sMCUSR __attribute__ ((section(".noinit")));
 
 /*
- Next, we need to put some code to save reset cause from the bootload (in r2)
+ Next, we need to put some code to save reset cause from the bootloader (in r2)
  to the variable.  Again, avr-gcc provides special code sections for this.
- If compiled with link time optimization (-flto), as done by the Arduno
+ If compiled with link time optimization (-flto), as done by the Arduino
  IDE version 1.6 and higher, we need the "used" attribute to prevent this
  from being omitted.
  */
@@ -108,19 +119,19 @@ void resetFlagsInit(void) {
     /*
      save the reset flags passed from the bootloader
      This is a "simple" matter of storing (STS) r2 in the special variable
-     that we have created.  We use assembler to access the right variable.
+     that we have created. We use assembler to access the right variable.
      */
     __asm__ __volatile__ ("sts %0, r2\n" : "=m" (sMCUSR) :);
 }
 
-bool sBootReasonWasReset = false;
+bool sBootReasonWasPowerUp = false;
 /*
  * Start of robot car control program
  */
 void setup() {
     MCUSR = 0;
-    if (sMCUSR & (1 << EXTRF)) {
-        sBootReasonWasReset = true;
+    if (sMCUSR & (1 << PORF)) {
+        sBootReasonWasPowerUp = true; // always true for old Optiboot bootloader
     }
 
     /*
@@ -133,27 +144,40 @@ void setup() {
     pinMode(PIN_LASER_OUT, OUTPUT);
 #endif
 
-    tone(PIN_SPEAKER, 2200, 50); // Booted
+    tone(PIN_BUZZER, 2200, 50); // Booted
 
     // initialize motors
 #ifdef USE_ADAFRUIT_MOTOR_SHIELD
     RobotCarMotorControl.init(true); // true -> read from EEPROM
 #else
+#  ifdef USE_ENCODER_MOTOR_CONTROL
     RobotCarMotorControl.init(PIN_RIGHT_MOTOR_FORWARD, PIN_RIGHT_MOTOR_BACKWARD, PIN_RIGHT_MOTOR_PWM, PIN_LEFT_MOTOR_FORWARD,
-            PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM, true);
+    PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM, true); // true -> read from EEPROM
+#  else
+    RobotCarMotorControl.init(PIN_RIGHT_MOTOR_FORWARD, PIN_RIGHT_MOTOR_BACKWARD, PIN_RIGHT_MOTOR_PWM, PIN_LEFT_MOTOR_FORWARD,
+    PIN_LEFT_MOTOR_BACKWARD, PIN_LEFT_MOTOR_PWM, false); // false -> do NOT read from EEPROM
+#  endif
 #endif
+    RobotCarMotorControl.stopMotors(); // in case motors were running before
 
     delay(100);
-    tone(PIN_SPEAKER, 2200, 50); // motor initialized
+    tone(PIN_BUZZER, 2200, 50); // motor initialized
 
     sLastServoAngleInDegrees = 90;
+
+    initSerial(BLUETOOTH_BAUD_RATE);
+
     // Must be after RobotCarMotorControl.init, since it tries to stop motors in connect callback
     setupGUI(); // this enables output by BlueDisplay1 and lasts around 100 milliseconds
 
-    tone(PIN_SPEAKER, 2200, 50); // GUI initialized (if connected)
+    tone(PIN_BUZZER, 2200, 50); // GUI initialized (if connected)
 
-    if (!BlueDisplay1.isConnectionEstablished()) {
-#if defined (USE_STANDARD_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
+    if (BlueDisplay1.isConnectionEstablished()) {
+        // Just to know which program is running on my Arduino
+        BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
+//        BlueDisplay1.debug("sMCUSR=", sMCUSR);
+    } else {
+#if !defined(USE_SIMPLE_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
 #if defined(__AVR_ATmega32U4__) || defined(SERIAL_USB) || defined(SERIAL_PORT_USBVIRTUAL)
     delay(2000); // To be able to connect Serial monitor after reset and before first printout
 #endif
@@ -162,10 +186,6 @@ void setup() {
         Serial.print(F("sMCUSR=0x"));
         Serial.println(sMCUSR, HEX);
 #endif
-    } else {
-        // Just to know which program is running on my Arduino
-        BlueDisplay1.debug("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__);
-//        BlueDisplay1.debug("sMCUSR=", sMCUSR);
     }
 
 #ifdef CAR_HAS_CAMERA
@@ -175,7 +195,9 @@ void setup() {
     initServos(); // must be after RobotCarMotorControl.init() since it uses is2WDCar set there.
 
 // reset all values
+#ifdef ENABLE_PATH_INFO_PAGE
     resetPathData();
+#endif
     initDistance();
 
 #if defined(MONITOR_LIPO_VOLTAGE)
@@ -186,7 +208,11 @@ void setup() {
 //    initTrace();
 
     delay(100);
-    tone(PIN_SPEAKER, 2200, 50); // startup finished
+    if (sBootReasonWasPowerUp) {
+        tone(PIN_BUZZER, 2200, 50); // power up finished
+    } else {
+        tone(PIN_BUZZER, 2200, 300); // long tone, reset finished - only detectable with Optiboot 8.0
+    }
 }
 
 void loop() {
@@ -212,10 +238,10 @@ void loop() {
         if (!BlueDisplay1.isConnectionEstablished()) {
             // Set right page for reconnect
             GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
-            if (sBootReasonWasReset) {
-                startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
-            } else {
+            if (sBootReasonWasPowerUp) {
                 startStopAutomomousDrive(true, MODE_FOLLOWER);
+            } else {
+                startStopAutomomousDrive(true, MODE_AUTONOMOUS_DRIVE_BUILTIN);
             }
         }
     }
@@ -245,11 +271,10 @@ void loop() {
 
 #endif
 
-    if (sCurrentPage == PAGE_HOME || sCurrentPage == PAGE_TEST) {
+    if (sCurrentPage == PAGE_TEST) {
         /*
          * Direct speed control by GUI
          */
-
         if (RobotCarMotorControl.updateMotors()) {
 #ifdef USE_ENCODER_MOTOR_CONTROL
             // At least one motor is moving here
@@ -257,7 +282,6 @@ void loop() {
             MOTOR_DEFAULT_SYNCHRONIZE_INTERVAL_MILLIS);
 #endif
         }
-
     }
 
     if (sRuningAutonomousDrive) {
@@ -299,7 +323,7 @@ void playRandomMelody() {
 //    BlueDisplay1.debug("Play melody");
 
 #if defined(USE_ADAFRUIT_MOTOR_SHIELD)
-    startPlayRandomRtttlFromArrayPGM(PIN_SPEAKER, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
+    startPlayRandomRtttlFromArrayPGM(PIN_BUZZER, RTTTLMelodiesSmall, ARRAY_SIZE_MELODIES_SMALL);
 #else
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1);            // enable interrupt for inverted pin handling
@@ -332,9 +356,9 @@ void playRandomMelody() {
 
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
 #if defined(USE_ADAFRUIT_MOTOR_SHIELD)
-    tone(PIN_SPEAKER, aFrequency);
+    tone(PIN_BUZZER, aFrequency);
     delay(aDuration);
-    noTone(PIN_SPEAKER);
+    noTone(PIN_BUZZER);
 #else
     OCR2B = 0;
     bitWrite(TIMSK2, OCIE2B, 1); // enable interrupt for inverted pin handling

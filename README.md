@@ -2,6 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Build Status](https://github.com/ArminJo/Arduino-RobotCar/workflows/TestCompile/badge.svg)](https://github.com/ArminJo/Arduino-RobotCar/actions)
+![Hit Counter](https://visitor-badge.laobi.icu/badge?page_id=ArminJo_Arduino-RobotCar)
 [![Hit Counter](https://hitcounter.pythonanywhere.com/count/tag.svg?url=https%3A%2F%2Fgithub.com%2FArminJo%2FArduino-RobotCar)](https://github.com/brentvollebregt/hit-counter)
 
 Enables autonomous driving of a 2 or 4 wheel car with an Arduino and a Adafruit Motor Shield V2.
@@ -12,16 +13,12 @@ Just overwrite the function doUserCollisionDetection() to test your own skill.
 
 You may also overwrite the function fillAndShowForwardDistancesInfo(), if you use your own scanning method.
 
-# Compile options
+# Compile options / macros
+To customize the software to different car extensions, there are some compile options / macros available.<br/>
+Modify it by commenting them out or in, or change the values if applicable. Or define the macro with the -D compiler option for gobal compile (the latter is not possible with the Arduino IDE, so consider to use [Sloeber](https://eclipse.baeyens.it).<br/>
+Compile options for the used **PWMMotorControl library** like `USE_ENCODER_MOTOR_CONTROL` are described [here](https://github.com/ArminJo/PWMMotorControl#compile-options--macros-for-this-library).
 
 | Option | Default | File | Description |
-|-|-|-|-|
-| `USE_ENCODER_MOTOR_CONTROL` | disabled | PWMDCMotor.h | Use fork light barrier and an attached encoder disc to enable motor distance and speed sensing. |
-| `USE_ADAFRUIT_MOTOR_SHIELD` | disabled | PWMDcMotor.h | | Use Adafruit Motor Shield v2 connected by I2C instead of simple TB6612 or L298 breakout board.<br/>
-This disables tone output by using motor as loudspeaker, but requires only 2 I2C/TWI pins in contrast to the 6 pins used for the full bride.<br/>
-For full bride, analogWrite the millis() timer0 is used since we use pin 5 & 6. |
-| `USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD` |  enabled | PWMDcMotor.h | Saves 694 bytes program memory  |
-| `SUPPORT_RAMP_UP` | enabled | PWMDcMotor.h | `DO_NOT_SUPPORT_RAMP_UP` | Saves around 300 bytes program memory |
 |-|-|-|-|
 | `USE_LAYOUT_FOR_NANO` | disabled | RobotCar.h | Use different pinout for Nano board. It has A6 and A7 available as pins. |
 | `CAR_HAS_4_WHEELS` | disabled | RobotCar.h | Use modified formula dor turning the car. |
@@ -34,9 +31,17 @@ For full bride, analogWrite the millis() timer0 is used since we use pin 5 & 6. 
 | `CAR_HAS_PAN_SERVO` | disabled | RobotCar.h | Enables the pan slider for the `PanServo` at the `PIN_PAN_SERVO` pin. |
 | `CAR_HAS_TILT_SERVO` | disabled | RobotCar.h | Enables the tilt slider for the `TiltServo` at the `PIN_TILT_SERVO` pin.. |
 | `MONITOR_LIPO_VOLTAGE` | disabled | RobotCar.h | Shows VIN voltage and monitors it for undervoltage. Requires 2 additional resistors at pin A2. |
-| `VIN_VOLTAGE_CORRECTION` | undefined | RobotCar.h | Voltage to be substracted from VIN voltage. E.g. if there is a series diode between LIPO and VIN set it to 0.8. |
+| `VIN_VOLTAGE_CORRECTION` | undefined | RobotCar.h | Voltage to be subtracted from VIN voltage. E.g. if there is a series diode between LIPO and VIN set it to 0.8. |
 
+### Modifying library properties with Arduino IDE
+First use *Sketch/Show Sketch Folder (Ctrl+K)*.<br/>
+If you did not yet stored the example as your own sketch, then you are instantly in the right library folder.<br/>
+Otherwise you have to navigate to the parallel `libraries` folder and select the library you want to access.<br/>
+In both cases the library files itself are located in the `src` directory.<br/>
 
+### Modifying library properties with Sloeber IDE
+If you are using Sloeber as your IDE, you can easily define global symbols with *Properties/Arduino/CompileOptions*.<br/>
+![Sloeber settings](https://github.com/ArminJo/ServoEasing/blob/master/pictures/SloeberDefineSymbols.png)
 
 # Wall detection
 The problem of the ultrasonic values is, that you can only detect a wall with the ultrasonic sensor if the angle of the wall relative to sensor axis is approximately between 70 and 110 degree.
@@ -45,13 +50,13 @@ Therefore I take samples every 18 degrees and if I get 2 adjacent short (<DISTAN
 The (invalid) values 18 degrees right and left of these samples are then extrapolated by computeNeigbourValue().
 
 # Pictures
-2 wheel car
+2 wheel car with encoders, 2 LiPo batteries, Adafruit Motor Shield V2, Bluetooth connection, and servo mounted head down
 ![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/2WheelDriveCar.jpg)
-4 wheel car
+4 wheel car, like 2 WD car before, but with servo mounted head up.
 ![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/4WheelDriveCar.jpg)
 Encoder fork sensor
 ![Encoder fork sensor](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ForkSensor.jpg)
-Servo mounting
+Servo mounted head down
 ![Servo mounting](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ServoAtTopBack.jpg)
 VIN sensing
 ![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/SensingVIn.jpg)
