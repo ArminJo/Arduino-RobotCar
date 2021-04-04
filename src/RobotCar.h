@@ -20,14 +20,13 @@
 #define SRC_ROBOTCAR_H_
 
 #include <Arduino.h>
-#include <Servo.h>
 
 //#define CAR_HAS_4_WHEELS
 
 //#define USE_LAYOUT_FOR_NANO
 
 // Modify HC-SR04 by connecting 10kOhm between echo and trigger and then use only trigger.
-//#define USE_US_SENSOR_1_PIN_MODE // Comment it out, if you use modified HC-SR04 modules or HY-SRF05 ones.
+//#define USE_US_SENSOR_1_PIN_MODE // Activate it, if you use modified HC-SR04 modules or HY-SRF05 ones.
 
 //#define CAR_HAS_IR_DISTANCE_SENSOR
 
@@ -49,8 +48,25 @@
  */
 // #define ENABLE_RTTTL
 //
-#include "CarMotorControl.h"
-extern CarMotorControl RobotCarMotorControl;
+/*
+ * Shows VIN voltage and monitors it for undervoltage. VIN/11 at A2, 1MOhm to VIN, 100kOhm to ground
+ */
+//#define MONITOR_VIN_VOLTAGE
+#if !defined(VIN_VOLTAGE_CORRECTION)
+#  ifdef ARDUINO_AVR_UNO
+#define VIN_VOLTAGE_CORRECTION 0.8
+#  endif
+#endif
+/*
+ * Activates the buttons to store compensation and drive speed
+ */
+//#define SUPPORT_EEPROM_STORAGE
+#if defined(CAR_HAS_PAN_SERVO) || defined(CAR_HAS_TILT_SERVO)
+#include <Servo.h>
+#endif
+
+#include "CarPWMMotorControl.h"
+extern CarPWMMotorControl RobotCarMotorControl;
 
 /*
  * Pin usage
@@ -65,19 +81,19 @@ extern CarMotorControl RobotCarMotorControl;
  *   6  O   Left motor PWM / NC for UNO board   - connected to ENA
  *   7  O   Right motor back / NC for UNO board - connected to IN3
  *   8  O   Left motor fwd / NC for UNO board   - connected to IN2
- *   9  O   Servo US distance - Servo Nr. 2 on Adafruit Motor Shield
- *   10 O   Servo laser pan   - Servo Nr. 1 on Adafruit Motor Shield
- *   11 O   Servo laser tilt / Speaker for UNO board
- *   12 O   Left motor back / NC for UNO board  - connected to IN1
+ *   9  O   Left motor back / NC for UNO board  - connected to IN1
+ *   10 O   Servo US distance - Servo Nr. 2 on Adafruit Motor Shield
+ *   11 O   Servo laser pan
+ *   12 O   Servo laser tilt / Speaker for UNO board
  *   13 O   Laser power
  *
  *   A0 O   US trigger (and echo in 1 pin US sensor mode)
- *   A1 I   IR distance (needs 1 pin US sensor mode) / US echo
- *   A2 I   VIN/11, 1MOhm to VIN, 100kOhm to ground.
- *   A3 IP  NC
+ *   A1 I   US echo
+ *   A2 I   VIN/11, 1MOhm to VIN, 100kOhm to ground
+ *   A3 I   IR remote control signal in / IR distance / Speaker for Nano board
  *   A4 SDA NC for Nano / I2C for UNO board motor shield
  *   A5 SCL NC for Nano / I2C for UNO board motor shield
- *   A6 O   Speaker for Nano board / not available on UNO board
+ *   A6 O
  *   A7 O   Camera supply control
  */
 
@@ -91,24 +107,28 @@ extern CarMotorControl RobotCarMotorControl;
 #define PIN_RIGHT_MOTOR_BACKWARD    7 // IN3
 #define PIN_RIGHT_MOTOR_PWM         5 // ENB - Must be PWM capable
 
-#define PIN_LEFT_MOTOR_FORWARD     12 // IN1 - Pin 9 is already reserved for distance servo
+#define PIN_LEFT_MOTOR_FORWARD      9 // IN1
 #define PIN_LEFT_MOTOR_BACKWARD     8 // IN2
 #define PIN_LEFT_MOTOR_PWM          6 // ENA - Must be PWM capable
 #endif
 
+#ifdef USE_ENCODER_MOTOR_CONTROL
+#define RIGHT_MOTOR_INTERRUPT    INT0 // Pin 2
+#define LEFT_MOTOR_INTERRUPT     INT1 // Pin 3
+#endif
 
 /*
  * Servo pins
  */
-#define PIN_DISTANCE_SERVO       9 // Servo Nr. 2 on Adafruit Motor Shield
+#define PIN_DISTANCE_SERVO      10 // Servo Nr. 1 on Adafruit Motor Shield
 #ifdef CAR_HAS_PAN_SERVO
-#define PIN_PAN_SERVO           10 // Servo Nr. 1 on Adafruit Motor Shield
+#define PIN_PAN_SERVO           11
 #endif
 #ifdef CAR_HAS_TILT_SERVO
-#define PIN_TILT_SERVO          11
+#define PIN_TILT_SERVO          12
 #endif
 
-#if defined(MONITOR_LIPO_VOLTAGE)
+#if defined(MONITOR_VIN_VOLTAGE)
 // Pin A0 for VCC monitoring - ADC channel 2
 // Assume an attached resistor network of 100k / 10k from VCC to ground (divider by 11)
 #define VIN_11TH_IN_CHANNEL      2 // = A2
@@ -150,7 +170,7 @@ extern CarMotorControl RobotCarMotorControl;
 #  ifdef CAR_HAS_CAMERA
 #define PIN_CAMERA_SUPPLY_CONTROL  4
 #  endif
-#define PIN_BUZZER                11
+#define PIN_BUZZER                12
 #endif
 
 /**************************
@@ -180,20 +200,19 @@ extern Servo PanServo;
 extern Servo TiltServo;
 #endif
 
-
 /************************************************************************************
  * Definitions and declarations only used for GUI in RobotCarBlueDisplay.cpp example
  ************************************************************************************/
 #define MINIMUM_DISTANCE_TO_SIDE 21
 #define MINIMUM_DISTANCE_TO_FRONT 35
 
-#if defined(MONITOR_LIPO_VOLTAGE)
+#if defined(MONITOR_VIN_VOLTAGE)
 #include "ADCUtils.h"
 
 extern float sVINVoltage;
-#if defined(MONITOR_LIPO_VOLTAGE)
-#define VOLTAGE_LOW_THRESHOLD 6.9 // Formula: 2 * 3.5 volt - voltage loss: 25 mV GND + 45 mV VIN + 35 mV Battery holder internal
-#define VOLTAGE_USB_THRESHOLD 5.5
+#if defined(MONITOR_VIN_VOLTAGE)
+#define VOLTAGE_LIPO_LOW_THRESHOLD  6.9 // Formula: 2 * 3.5 volt - voltage loss: 25 mV GND + 45 mV VIN + 35 mV Battery holder internal
+#define VOLTAGE_USB_THRESHOLD       5.5
 #else
 #endif
 #define VOLTAGE_TOO_LOW_DELAY_ONLINE 3000 // display VIN every 500 ms for 4 seconds

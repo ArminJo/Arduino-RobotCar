@@ -20,13 +20,20 @@
 #define DISTANCE_H_
 
 #include <Arduino.h>
+
+#if defined(CAR_HAS_PAN_SERVO) || defined(CAR_HAS_TILT_SERVO)
 #include <Servo.h>
+#else
+#include "LightweightServo.h"
+#endif
 
 /*
- * Comment this out / enable this if the distance servo is mounted head down to detect small obstacles.
+ * Activate this, if the distance servo is mounted head down to detect small obstacles.
  */
 //#define DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
+#if defined(CAR_HAS_PAN_SERVO) || defined(CAR_HAS_TILT_SERVO)
 extern Servo DistanceServo;
+#endif
 
 /*
  * Constants for fillAndShowForwardDistancesInfo(), doWallDetection etc.
@@ -36,10 +43,11 @@ extern Servo DistanceServo;
 #define STEPS_PER_SCAN      (NUMBER_OF_DISTANCES - 1) // -> 162 degrees for 18 DEGREES_PER_STEP, 153 for 17 degrees
 #define START_DEGREES       ((180 - (DEGREES_PER_STEP * STEPS_PER_SCAN)) / 2) // 9 for 18, 13,5 for 17 - we need it symmetrical in the 180 degrees range
 
+#define DISTANCE_TIMEOUT_CM                     200 // do not measure distances greater than 200 cm
 #define DISTANCE_TIMEOUT_CM_FOLLOWER            130 // do not measure and process distances greater than 130 cm
 #define DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE    100 // do not measure and process distances greater than 100 cm
 
-#define DISTANCE_TIMEOUT_COLOR COLOR_CYAN
+#define DISTANCE_TIMEOUT_COLOR COLOR16_CYAN
 #define DISTANCE_DISPLAY_PERIOD_MILLIS 500
 
 // for future use maybe
@@ -83,7 +91,8 @@ extern int sLastDegreesTurned;
 
 void initDistance();
 void DistanceServoWriteAndDelay(uint8_t aValue, bool doDelay = false);
-unsigned int getDistanceAsCentiMeter(bool doShow = false, uint8_t aDistanceTimeout = DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE);
+unsigned int getDistanceAsCentiMeter(bool doShow = false, uint8_t aDistanceTimeout = DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE,
+        bool aWaitForCurrentMeasurementToEnd = false);
 int scanForTarget();
 bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan = false);
 void doWallDetection();
@@ -99,7 +108,9 @@ uint8_t readToFDistanceAsCentimeter(); // no start of measurement, just read res
 #endif
 
 #ifdef CAR_HAS_IR_DISTANCE_SENSOR
-uint8_t getIRDistanceAsCentimeter();
+uint8_t getIRDistanceAsCentimeter(bool aWaitForCurrentMeasurementToEnd);
+#define IR_SENSOR_NEW_MEASUREMENT_THRESHOLD 2 // If the output value changes by this amount, we can assume that a new measurement is started
+#define IR_SENSOR_MEASUREMENT_TIME_MILLIS   41 // the IR sensor takes 39 ms for one measurement
 #endif
 
 #endif //  DISTANCE_H_

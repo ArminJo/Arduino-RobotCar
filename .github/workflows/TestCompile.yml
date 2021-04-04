@@ -34,7 +34,6 @@ jobs:
             build-properties:
               RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DUSE_ADAFRUIT_MOTOR_SHIELD
@@ -44,7 +43,6 @@ jobs:
               RobotCarBlueDisplay:
                 -DUSE_LAYOUT_FOR_NANO
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DCAR_HAS_PAN_SERVO
@@ -58,7 +56,6 @@ jobs:
             build-properties:
               RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_STANDARD_SERIAL
                 -DUSE_US_SENSOR_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DCAR_HAS_TOF_DISTANCE_SENSOR
@@ -76,22 +73,20 @@ jobs:
           ref: master
           path: CustomLibrary_BD # must contain string "Custom"
 
-      - name: Checkout new PWMMotorControl library
-        uses: actions/checkout@v2
-        with:
-          repository: ArminJo/PWMMotorControl
-          ref: master
-          path: CustomLibrary_PWM # must contain string "Custom"
+# Currently included in source directory
+#      - name: Checkout new PWMMotorControl library
+#        uses: actions/checkout@v2
+#        with:
+#          repository: ArminJo/PWMMotorControl
+#          ref: master
+#          path: CustomLibrary_PWM # must contain string "Custom"
 
-      # Use the arduino-test-compile script, because it is faster
-      - name: Compile all examples using the bash script arduino-test-compile.sh
-        env:
-          # Passing parameters to the script by setting the appropriate ENV_* variables.
-          ENV_ARDUINO_BOARD_FQBN: ${{ matrix.arduino-boards-fqbn }}
-          ENV_REQUIRED_LIBRARIES: ${{ env.REQUIRED_LIBRARIES }}
-          ENV_EXAMPLES_BUILD_PROPERTIES: ${{ toJson(matrix.build-properties) }}
-        run: |
-          wget --quiet https://raw.githubusercontent.com/ArminJo/arduino-test-compile/master/arduino-test-compile.sh
-            ls -l arduino-test-compile.sh
-            chmod +x arduino-test-compile.sh
-            ./arduino-test-compile.sh
+      - name: Compile all examples using the arduino-test-compile action
+        uses: ArminJo/arduino-test-compile@master
+        with:
+          arduino-board-fqbn: ${{ matrix.arduino-boards-fqbn }}
+          arduino-platform: ${{ matrix.arduino-platform }}
+          platform-url: ${{ matrix.platform-url }}
+          required-libraries: ${{ env.REQUIRED_LIBRARIES }}
+          sketches-exclude: ${{ matrix.sketches-exclude }}
+          build-properties: ${{ toJson(matrix.build-properties) }}

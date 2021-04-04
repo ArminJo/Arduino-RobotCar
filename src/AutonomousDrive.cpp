@@ -26,9 +26,10 @@
 
 #include "RobotCar.h"
 #include "RobotCarGui.h"
+#include "Distance.h"
 
 #include "HCSR04.h"
-#include "Distance.h"
+#include "pitches.h"
 
 uint8_t sDriveMode = MODE_MANUAL_DRIVE; // one of MODE_MANUAL_DRIVE, MODE_AUTONOMOUS_DRIVE_BUILTIN, MODE_AUTONOMOUS_DRIVE_USER or MODE_FOLLOWER
 
@@ -97,7 +98,7 @@ void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
 #endif
         DistanceServoWriteAndDelay(90);
         sDriveMode = MODE_MANUAL_DRIVE;
-        RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+        RobotCarMotorControl.stop(MOTOR_RELEASE);
     }
 
     // manage on off buttons
@@ -141,11 +142,10 @@ void driveAutonomousOneStep() {
              */
             if (sNextDegreesToTurn == GO_BACK_AND_SCAN_AGAIN) {
                 // go backwards and do a new scan
-                RobotCarMotorControl.goDistanceCentimeter(10, DIRECTION_BACKWARD, &loopGUI);
+                RobotCarMotorControl.goDistanceMillimeter(100, DIRECTION_BACKWARD, &loopGUI);
             } else {
                 // rotate and go
-                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, sTurnMode, true, &loopGUI);
-//                RobotCarMotorControl.rotateCar(sNextDegreesToTurn, TURN_FORWARD, true, &loopGUI);
+                RobotCarMotorControl.rotate(sNextDegreesToTurn, sTurnMode, &loopGUI);
                 // wait to really stop after turning
                 delay(100);
                 sLastDegreesTurned = sNextDegreesToTurn;
@@ -157,13 +157,13 @@ void driveAutonomousOneStep() {
              */
             if (sStepMode == MODE_SINGLE_STEP) {
                 // Go fixed distance
-                RobotCarMotorControl.goDistanceCentimeter(sCentimeterPerScan, DIRECTION_FORWARD, &loopGUI);
+                RobotCarMotorControl.goDistanceMillimeter(sCentimeterPerScan*10, DIRECTION_FORWARD, &loopGUI);
             } else
             /*
              * Continuous mode, start car or let it run
              */
             if (tCarIsStopped) {
-                RobotCarMotorControl.startRampUpAndWaitForDriveSpeed(DIRECTION_FORWARD, &loopGUI);
+                RobotCarMotorControl.startRampUpAndWaitForDriveSpeedPWM(DIRECTION_FORWARD, &loopGUI);
             }
         }
 
@@ -204,7 +204,7 @@ void driveAutonomousOneStep() {
                 char tStringBuffer[6];
                 sprintf_P(tStringBuffer, PSTR("%2d%s"), sCentimeterPerScan, "cm");
                 BlueDisplay1.drawText(0, BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND, tStringBuffer, TEXT_SIZE_11,
-                COLOR_BLACK, COLOR_WHITE);
+                COLOR16_BLACK, COLOR16_WHITE);
             }
         }
 
@@ -215,7 +215,7 @@ void driveAutonomousOneStep() {
             /*
              * Stop if rotation requested or single step
              */
-            RobotCarMotorControl.stopCarAndWaitForIt();
+            RobotCarMotorControl.stopAndWaitForIt();
 #ifdef USE_ENCODER_MOTOR_CONTROL
 #ifdef ENABLE_PATH_INFO_PAGE
 
@@ -303,11 +303,11 @@ int doBuiltInCollisionDetection() {
  ***************************************************/
 
 void checkSpeedAndGo(unsigned int aSpeed, uint8_t aRequestedDirection) {
-    if (aSpeed > RobotCarMotorControl.rightCarMotor.DriveSpeed * 2) {
-        aSpeed = RobotCarMotorControl.rightCarMotor.DriveSpeed * 2;
+    if (aSpeed > RobotCarMotorControl.rightCarMotor.DriveSpeedPWM * 2) {
+        aSpeed = RobotCarMotorControl.rightCarMotor.DriveSpeedPWM * 2;
     }
-    if (aSpeed > MAX_SPEED) {
-        aSpeed = MAX_SPEED;
+    if (aSpeed > MAX_SPEED_PWM) {
+        aSpeed = MAX_SPEED_PWM;
     }
     RobotCarMotorControl.startRampUpAndWait(aSpeed, aRequestedDirection, &loopGUI);
 
@@ -343,8 +343,7 @@ void driveFollowerModeOneStep() {
             /*
              * we had a pending turn
              */
-            RobotCarMotorControl.rotateCar(sNextDegreesToTurn, TURN_FORWARD, true);
-            //RobotCarMotorControl.rotateCar(sNextDegreesToTurn, TURN_IN_PLACE, true);
+            RobotCarMotorControl.rotate(sNextDegreesToTurn, TURN_FORWARD);
             sNextDegreesToTurn = 0;
 
         } else {
@@ -357,7 +356,7 @@ void driveFollowerModeOneStep() {
             if (tCentimeter > FOLLOWER_DISTANCE_TARGET_SCAN_CENTIMETER) {
                 // trigger scanning in the next loop
                 // Stop car, clear display area and show distance
-                RobotCarMotorControl.stopMotors();
+                RobotCarMotorControl.stop();
                 clearPrintedForwardDistancesInfos();
                 // show current distance (as US distance), which triggers the scan
                 showUSDistance(tCentimeter, true);
@@ -376,20 +375,20 @@ void driveFollowerModeOneStep() {
 //        if (RobotCarMotorControl.getCarDirectionOrBrakeMode() != DIRECTION_FORWARD) {
 //            Serial.println(F("Go forward"));
 //        }
-                tSpeed = RobotCarMotorControl.rightCarMotor.StartSpeed + (tCentimeter - FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) * 2;
+                tSpeed = RobotCarMotorControl.rightCarMotor.StartSpeedPWM + (tCentimeter - FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) * 2;
                 checkSpeedAndGo(tSpeed, DIRECTION_FORWARD);
 
             } else if (tCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) {
 //        if (RobotCarMotorControl.getCarDirectionOrBrakeMode() != DIRECTION_BACKWARD) {
 //            Serial.println(F("Go backward"));
 //        }
-                tSpeed = RobotCarMotorControl.rightCarMotor.StartSpeed + (FOLLOWER_DISTANCE_MINIMUM_CENTIMETER - tCentimeter) * 4;
+                tSpeed = RobotCarMotorControl.rightCarMotor.StartSpeedPWM + (FOLLOWER_DISTANCE_MINIMUM_CENTIMETER - tCentimeter) * 4;
                 checkSpeedAndGo(tSpeed, DIRECTION_BACKWARD);
 
             } else {
                 if (RobotCarMotorControl.getCarDirectionOrBrakeMode() != MOTOR_RELEASE) {
 //        Serial.println(F("Stop"));
-                    RobotCarMotorControl.stopMotors(MOTOR_RELEASE);
+                    RobotCarMotorControl.stop(MOTOR_RELEASE);
                 }
             }
         }
@@ -401,11 +400,11 @@ unsigned int __attribute__((weak)) getDistanceAndPlayTone() {
     /*
      * Get distance; timeout is 1 meter
      */
-    unsigned int tCentimeter = getDistanceAsCentiMeter(true, DISTANCE_TIMEOUT_CM_FOLLOWER);
+    unsigned int tCentimeter = getDistanceAsCentiMeter(true, DISTANCE_TIMEOUT_CM_FOLLOWER, true);
     /*
      * play tone
      */
-    int tFrequency = map(tCentimeter, 0, 100, 100, 2000);
-    tone(PIN_BUZZER, tFrequency);
+    uint8_t tIndex = map(tCentimeter, 0, 100, 0, ARRAY_SIZE_NOTE_C5_TO_C7_PENTATONIC - 1);
+    tone(PIN_BUZZER, NoteC5ToC7Pentatonic[tIndex]);
     return tCentimeter;
 }

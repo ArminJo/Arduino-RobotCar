@@ -25,7 +25,9 @@
 
 ForwardDistancesInfoStruct sForwardDistancesInfo;
 
+#if defined(CAR_HAS_PAN_SERVO) || defined(CAR_HAS_TILT_SERVO)
 Servo DistanceServo;
+#endif
 uint8_t sLastServoAngleInDegrees; // 0 - 180 needed for optimized delay for servo repositioning. Only set by DistanceServoWriteAndDelay()
 
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
@@ -118,7 +120,11 @@ void DistanceServoWriteAndDelay(uint8_t aTargetDegrees, bool doDelay) {
     // The servo is top down and therefore inverted
     aTargetDegrees = 180 - aTargetDegrees;
 #endif
+#if defined(CAR_HAS_PAN_SERVO) || defined(CAR_HAS_TILT_SERVO)
     DistanceServo.write(aTargetDegrees);
+#else
+    write10(aTargetDegrees);
+#endif
 
     /*
      * Delay
@@ -179,7 +185,7 @@ int scanForTarget() {
      */
     for (uint8_t i = 0; i < 3; ++i) {
         DistanceServoWriteAndDelay(tScanDegree, true);
-        tCentimeter = getDistanceAsCentiMeter(false, DISTANCE_TIMEOUT_CM_FOLLOWER);
+        tCentimeter = getDistanceAsCentiMeter(false, DISTANCE_TIMEOUT_CM_FOLLOWER, true);
 
         uint8_t tCurrentIndex;
         if (tDeltaDegree > 0) {
@@ -194,17 +200,17 @@ int scanForTarget() {
              * Determine color and draw distance line
              */
             color16_t tColor;
-            tColor = COLOR_RED; // tCentimeter <= sCentimeterPerScan
+            tColor = COLOR16_RED; // tCentimeter <= sCentimeterPerScan
             if (tCentimeter <= FOLLOWER_DISTANCE_TARGET_SCAN_CENTIMETER) {
-                tColor = COLOR_GREEN;
+                tColor = COLOR16_GREEN;
             } else if (tCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) {
-                tColor = COLOR_YELLOW;
+                tColor = COLOR16_YELLOW;
             }
 
             // Clear old line
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
                     sForwardDistancesInfo.RawDistancesArray[tCurrentIndex], tScanDegree,
-                    COLOR_WHITE, 3);
+                    COLOR16_WHITE, 3);
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tScanDegree, tColor, 3);
         }
         sForwardDistancesInfo.RawDistancesArray[tCurrentIndex] = tCentimeter;
@@ -223,7 +229,7 @@ int scanForTarget() {
          */
         sprintf_P(sStringBuffer, PSTR("rotation:%3d\xB0 min:%2dcm"), tScanDegree - 90, tCentimeter); // \xB0 is degree character
         BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sStringBuffer, TEXT_SIZE_11,
-        COLOR_BLACK, COLOR_WHITE);
+        COLOR16_BLACK, COLOR16_WHITE);
 
         // reset distance servo direction
         DistanceServoWriteAndDelay(90, false);
@@ -282,33 +288,32 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
             // User sent an event -> stop and return now
             return true;
         }
-
-        unsigned int tCentimeter = getDistanceAsCentiMeter(false);
+        unsigned int tCentimeter = getDistanceAsCentiMeter(false, DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE, true);
         if ((tIndex == INDEX_FORWARD_1 || tIndex == INDEX_FORWARD_2) && tCentimeter <= sCentimeterPerScanTimesTwo) {
             /*
              * Emergency motor stop if index is forward and measured distance is less than distance driven during two scans
              */
-            RobotCarMotorControl.stopMotors();
+            RobotCarMotorControl.stop();
         }
 
         if (sCurrentPage == PAGE_AUTOMATIC_CONTROL && BlueDisplay1.isConnectionEstablished()) {
             /*
              * Determine color
              */
-            tColor = COLOR_RED; // tCentimeter <= sCentimeterPerScan
+            tColor = COLOR16_RED; // tCentimeter <= sCentimeterPerScan
             if (tCentimeter >= DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE) {
                 tColor = DISTANCE_TIMEOUT_COLOR;
             } else if (tCentimeter > sCentimeterPerScanTimesTwo) {
-                tColor = COLOR_GREEN;
+                tColor = COLOR16_GREEN;
             } else if (tCentimeter > sCentimeterPerScan) {
-                tColor = COLOR_YELLOW;
+                tColor = COLOR16_YELLOW;
             }
 
             /*
              * Clear old and draw new distance line
              */
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
-                    sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR_WHITE, 3);
+                    sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR16_WHITE, 3);
             BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
                     3);
         }
@@ -337,7 +342,7 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
  * Negative means we are heading away from wall
  */
 uint8_t computeNeigbourValue(uint8_t aDegreesPerStepValue, uint8_t a2DegreesPerStepValue, uint8_t aClipValue,
-        int8_t * aDegreeOfEndpointConnectingLine) {
+        int8_t *aDegreeOfEndpointConnectingLine) {
 
     /*
      * Name of the variables are for DEGREES_PER_STEP = 20 only for better understanding.
@@ -443,7 +448,7 @@ void doWallDetection() {
              * i.e. put 20 degrees to 40 degrees parameter and vice versa in order to use the 0 degree value as the 60 degrees one
              */
             uint8_t tNextDistanceComputed = computeNeigbourValue(tCurrentDistance, tLastDistance,
-                    DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE, &tDegreeOfConnectingLine);
+            DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE, &tDegreeOfConnectingLine);
 #ifdef TRACE
             BlueDisplay1.debug("i=", i);
             BlueDisplay1.debug("AngleToCheck @i+1=", tCurrentAngleToCheck);
@@ -482,7 +487,7 @@ void doWallDetection() {
                 tNextDistanceOriginal = tNextDistanceComputed;
                 if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
                     BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
-                            tCurrentAngleToCheck, COLOR_WHITE, 1);
+                            tCurrentAngleToCheck, COLOR16_WHITE, 1);
                 }
             }
         }
@@ -520,7 +525,7 @@ void doWallDetection() {
                  * Use computeNeigbourValue in the intended way, so do not change sign of tDegreeOfConnectingLine!
                  */
                 uint8_t tNextValueComputed = computeNeigbourValue(tCurrentDistance, tLastDistance,
-                        DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE, &tDegreeOfConnectingLine);
+                DISTANCE_TIMEOUT_CM_AUTONOMOUS_DRIVE, &tDegreeOfConnectingLine);
 #ifdef TRACE
                 BlueDisplay1.debug("i=", i);
                 BlueDisplay1.debug("AngleToCheck @i+1=", tCurrentAngleToCheck);
@@ -556,7 +561,7 @@ void doWallDetection() {
                     tNextValue = tNextValueComputed;
                     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
                         BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
-                                tCurrentAngleToCheck, COLOR_WHITE, 1);
+                                tCurrentAngleToCheck, COLOR16_WHITE, 1);
                     }
                 }
             }
@@ -605,23 +610,27 @@ void postProcessDistances(uint8_t aDistanceThreshold) {
     }
 }
 
-void readAndShowDistancePeriodically(uint16_t aPeriodMillis) {
+void readAndShowDistancePeriodically() {
     static long sLastUSMeasurementMillis;
 
     // Do not show distanced during (time critical) acceleration or deceleration
     if (!RobotCarMotorControl.isStateRamp()) {
         long tMillis = millis();
-        if (sLastUSMeasurementMillis + aPeriodMillis < tMillis) {
+        if (tMillis - sLastUSMeasurementMillis >= DISTANCE_DISPLAY_PERIOD_MILLIS) {
             sLastUSMeasurementMillis = tMillis;
-            getDistanceAsCentiMeter(true);
+            getDistanceAsCentiMeter(true, DISTANCE_TIMEOUT_CM, false);
         }
     }
 }
 
 /*
  * Timeout is DISTANCE_TIMEOUT_CM (1 meter)
+ * aWaitForCurrentMeasurmentToEnd  for IR Distance sensors if true, wait for the current measurement to end, since the sensor was recently moved.
  */
-unsigned int getDistanceAsCentiMeter(bool doShow, uint8_t aDistanceTimeout) {
+unsigned int getDistanceAsCentiMeter(bool doShow, uint8_t aDistanceTimeout, bool aWaitForCurrentMeasurementToEnd) {
+#if !defined(CAR_HAS_IR_DISTANCE_SENSOR)
+    (void) aWaitForCurrentMeasurementToEnd; // not used
+#endif
 #ifdef CAR_HAS_TOF_DISTANCE_SENSOR
     if (sScanMode != SCAN_MODE_US) {
         sToFDistanceSensor.VL53L1X_StartRanging();
@@ -629,6 +638,9 @@ unsigned int getDistanceAsCentiMeter(bool doShow, uint8_t aDistanceTimeout) {
 #endif
 
     unsigned int tCentimeter = getUSDistanceAsCentiMeterWithCentimeterTimeout(aDistanceTimeout);
+    if (tCentimeter == 0) {
+        tCentimeter = aDistanceTimeout;
+    }
     if (doShow) {
         showUSDistance(tCentimeter);
     }
@@ -637,7 +649,7 @@ unsigned int getDistanceAsCentiMeter(bool doShow, uint8_t aDistanceTimeout) {
     if (sScanMode != SCAN_MODE_US) {
 #  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
         if (sScanMode != SCAN_MODE_US) {
-            tIRCentimeter = getIRDistanceAsCentimeter();
+            tIRCentimeter = getIRDistanceAsCentimeter(aWaitForCurrentMeasurementToEnd);
             if (doShow) {
                 showIRDistance(tIRCentimeter);
             }
@@ -672,8 +684,30 @@ unsigned int getDistanceAsCentiMeter(bool doShow, uint8_t aDistanceTimeout) {
 /*
  * The 1080 needs 39 ms for each measurement cycle
  */
-uint8_t getIRDistanceAsCentimeter() {
-    float tVolt = analogRead(PIN_IR_DISTANCE_SENSOR);
+uint8_t getIRDistanceAsCentimeter(bool aWaitForCurrentMeasurementToEnd) {
+    uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(PIN_IR_DISTANCE_SENSOR, DEFAULT);
+    // check for voltage changed then a new measurement is started
+    if (aWaitForCurrentMeasurementToEnd) {
+        uint16_t tOldValue = readADCChannelWithReferenceOversampleFast(PIN_IR_DISTANCE_SENSOR, DEFAULT, 2); // 4 samples
+//        int16_t tOldValue = analogRead(PIN_IR_DISTANCE_SENSOR); // 100 us
+        uint32_t tStartMillis = millis();
+        do {
+            int16_t tNewValue = readADCChannelWithReferenceOversampleFast(PIN_IR_DISTANCE_SENSOR, DEFAULT, 2); // 100 us
+//            int16_t tNewValue = analogRead(PIN_IR_DISTANCE_SENSOR); // 100 us
+            if (abs(tOldValue-tNewValue) > IR_SENSOR_NEW_MEASUREMENT_THRESHOLD) {
+                // assume, that voltage has changed because of the end of a measurement
+                break;
+            }
+            loopGUI();
+        } while (millis() - tStartMillis <= IR_SENSOR_MEASUREMENT_TIME_MILLIS);
+        // now a new measurement has started, wait for the result
+        delayAndLoopGUI(IR_SENSOR_NEW_MEASUREMENT_THRESHOLD); // the IR sensor takes 39 ms for one measurement
+    }
+
+    float tVolt = readADCChannelWithReferenceOversampleFast(PIN_IR_DISTANCE_SENSOR, DEFAULT, 2); // 4 samples
+//    float tVolt = analogRead(PIN_IR_DISTANCE_SENSOR); // 100 us
+    ADMUX = tOldADMUX; // Switch back (to INTERNAL)
+
     // * 0.004887585 for 1023 = 5V
     // Model 1080 / GP2Y0A21YK0F
     return (29.988 * pow(tVolt * 0.004887585, -1.173)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp

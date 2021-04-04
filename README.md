@@ -13,9 +13,9 @@ Just overwrite the function doUserCollisionDetection() to test your own skill.
 
 You may also overwrite the function fillAndShowForwardDistancesInfo(), if you use your own scanning method.
 
-# Compile options / macros
+# Compile options / macros for this software
 To customize the software to different car extensions, there are some compile options / macros available.<br/>
-Modify it by commenting them out or in, or change the values if applicable. Or define the macro with the -D compiler option for gobal compile (the latter is not possible with the Arduino IDE, so consider to use [Sloeber](https://eclipse.baeyens.it).<br/>
+Modify it by commenting them out or in, or change the values if applicable. Or define the macro with the -D compiler option for global compile (the latter is not possible with the Arduino IDE, so consider using [Sloeber](https://eclipse.baeyens.it).<br/>
 Compile options for the used **PWMMotorControl library** like `USE_ENCODER_MOTOR_CONTROL` are described [here](https://github.com/ArminJo/PWMMotorControl#compile-options--macros-for-this-library).
 
 | Option | Default | File | Description |
@@ -25,22 +25,24 @@ Compile options for the used **PWMMotorControl library** like `USE_ENCODER_MOTOR
 | `USE_US_SENSOR_1_PIN_MODE` | disabled | RobotCar.h | Use modified HC-SR04 modules or HY-SRF05 ones.</br>Modify HC-SR04 by connecting 10kOhm between echo and trigger and then use only trigger pin. |
 | `CAR_HAS_IR_DISTANCE_SENSOR` | disabled | RobotCar.h | Use Sharp GP2Y0A21YK / 1080 IR distance sensor. |
 | `CAR_HAS_TOF_DISTANCE_SENSOR` | disabled | RobotCar.h | Use VL53L1X TimeOfFlight distance sensor. |
-| `DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN` | disabled | Distance.h | The distance servo is mounted head down to detect even small obstacles. |
+| `DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN` | disabled | Distance.h | The distance servo is mounted head down to detect even small obstacles. The Servo direction is reverse then. |
 | `CAR_HAS_CAMERA` | disabled | RobotCar.h | Enables the `Camera` button for the `PIN_CAMERA_SUPPLY_CONTROL` pin. |
 | `CAR_HAS_LASER` | disabled | RobotCar.h | Enables the `Laser` button for the `PIN_LASER_OUT` / `LED_BUILTIN` pin. |
 | `CAR_HAS_PAN_SERVO` | disabled | RobotCar.h | Enables the pan slider for the `PanServo` at the `PIN_PAN_SERVO` pin. |
-| `CAR_HAS_TILT_SERVO` | disabled | RobotCar.h | Enables the tilt slider for the `TiltServo` at the `PIN_TILT_SERVO` pin.. |
-| `MONITOR_LIPO_VOLTAGE` | disabled | RobotCar.h | Shows VIN voltage and monitors it for undervoltage. Requires 2 additional resistors at pin A2. |
-| `VIN_VOLTAGE_CORRECTION` | undefined | RobotCar.h | Voltage to be subtracted from VIN voltage. E.g. if there is a series diode between LIPO and VIN set it to 0.8. |
+| `CAR_HAS_TILT_SERVO` | disabled | RobotCar.h | Enables the tilt slider for the `TiltServo` at the `PIN_TILT_SERVO` pin. |
+| `ENABLE_RTTTL` | undefined | RobotCar.h | Plays melody after initial timeout has reached. Enables the Melody button, which plays a random melody. |
+| `MONITOR_VIN_VOLTAGE` | disabled | RobotCar.h | Shows VIN voltage and monitors it for undervoltage. VIN/11 at A2, 1MOhm to VIN, 100kOhm to ground. |
+| `VIN_VOLTAGE_CORRECTION` | undefined or 0.8 for UNO | RobotCar.h | Voltage to be subtracted from VIN voltage for voltage monitoring. E.g. if there is a series diode between LIPO and VIN as on the UNO boards, set it to 0.8. |
+| `SUPPORT_EEPROM_STORAGE` | disabled | RobotCar.h | Activates the buttons to store compensation and drive speed. |
 
-### Modifying library properties with Arduino IDE
-First use *Sketch/Show Sketch Folder (Ctrl+K)*.<br/>
+### Modifying compile options with Arduino IDE
+First, use *Sketch > Show Sketch Folder (Ctrl+K)*.<br/>
 If you did not yet stored the example as your own sketch, then you are instantly in the right library folder.<br/>
 Otherwise you have to navigate to the parallel `libraries` folder and select the library you want to access.<br/>
 In both cases the library files itself are located in the `src` directory.<br/>
 
-### Modifying library properties with Sloeber IDE
-If you are using Sloeber as your IDE, you can easily define global symbols with *Properties/Arduino/CompileOptions*.<br/>
+### Modifying compile options with Sloeber IDE
+If you are using Sloeber as your IDE, you can easily define global symbols with *Properties > Arduino > CompileOptions*.<br/>
 ![Sloeber settings](https://github.com/ArminJo/ServoEasing/blob/master/pictures/SloeberDefineSymbols.png)
 
 # Wall detection
