@@ -1,10 +1,10 @@
 /*
- * CarIMUData.cpp
+ * IMUCarData.hpp
  *
  *  Functions for getting IMU data from MPU6050 for car control.
  *
  *  Created on: 19.11.2020
- *  Copyright (C) 2020  Armin Joachimsmeyer
+ *  Copyright (C) 2020-2022  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This file is part of PWMMotorControl https://github.com/ArminJo/PWMMotorControl.
@@ -22,6 +22,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
+#ifndef _IMU_CAR_DATA_HPP
+#define _IMU_CAR_DATA_HPP
 
 #include <Arduino.h>
 #include "Wire.h"
@@ -32,7 +34,7 @@
 #define FIFO_CHUNK_SIZE             ((FIFO_NUMBER_OF_ACCEL_VALUES + FIFO_NUMBER_OF_GYRO_VALUES) * 2)
 
 //#define DEBUG_WITHOUT_SERIAL // For debugging without Serial development
-#ifdef DEBUG_WITHOUT_SERIAL
+#if defined(DEBUG_WITHOUT_SERIAL)
 #include "DigitalWriteFast.h"
 #endif
 //#define DEBUG // Only for development
@@ -183,7 +185,7 @@ void IMUCarData::readCarDataFromMPU6050() {
     Wire.endTransmission(false);
     Wire.requestFrom((uint8_t) MPU6050_DEFAULT_ADDRESS, (uint8_t) 14, (uint8_t) true);
 
-#ifdef USE_ACCELERATOR_Y_FOR_SPEED
+#if defined(USE_ACCELERATOR_Y_FOR_SPEED)
 // skip x value
     Wire.read();
     Wire.read();
@@ -191,7 +193,7 @@ void IMUCarData::readCarDataFromMPU6050() {
 // read forward value
     AcceleratorForward.Byte.HighByte = Wire.read();
     AcceleratorForward.Byte.LowByte = Wire.read();
-#ifdef USE_NEGATIVE_ACCELERATION_FOR_SPEED
+#if defined(USE_NEGATIVE_ACCELERATION_FOR_SPEED)
     AcceleratorForward.Word = (-AcceleratorForward.Word) - AcceleratorForwardOffset;
 #else
     AcceleratorForward.Word = AcceleratorForward.Word - AcceleratorForwardOffset;
@@ -202,14 +204,14 @@ void IMUCarData::readCarDataFromMPU6050() {
     Speed.Long += AcceleratorForward.Word;
     Distance.Long += Speed.Long >> 8;
 
-#ifndef USE_ACCELERATOR_Y_FOR_SPEED
+#if !defined(USE_ACCELERATOR_Y_FOR_SPEED)
     // skip y value
     Wire.read();
     Wire.read();
 #endif
 
 // skip z, temp and 2 gyroscope values value
-    for (uint8_t i = 0; i < 8; i++) {
+    for (uint_fast8_t i = 0; i < 8; i++) {
         Wire.read();
     }
 
@@ -224,7 +226,7 @@ void IMUCarData::readCarDataFromMPU6050() {
  * @return true, if data might have changed
  */
 bool IMUCarData::readCarDataFromMPU6050Fifo() {
-#ifdef DEBUG_WITHOUT_SERIAL
+#if defined(DEBUG_WITHOUT_SERIAL)
     digitalToggleFast(12);
 #endif
     if (millis() - LastFifoCheckMillis < DELAY_TO_NEXT_IMU_DATA_MILLIS) {
@@ -245,7 +247,7 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
      * 140 us between each block transfer
      * 1000 us for next 32 bytes transfer => ~3.1 ms for 10 chunks
      */
-#ifdef DEBUG
+#if defined(DEBUG)
     Serial.print(tFifoCount);
     Serial.print("|");
 #endif
@@ -266,7 +268,7 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
         Wire.endTransmission(false);
         uint8_t tReceivedCount = Wire.requestFrom((uint8_t) MPU6050_DEFAULT_ADDRESS, (uint8_t) (tChunkCount * FIFO_CHUNK_SIZE),
                 (uint8_t) true);
-#ifdef WARN
+#if defined(WARN)
         if (tReceivedCount != (tChunkCount * FIFO_CHUNK_SIZE)) {
             // should never happen
             Serial.print(tReceivedCount);
@@ -274,19 +276,19 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
             Serial.println(tChunkCount * FIFO_CHUNK_SIZE);
         }
 #endif
-        for (uint8_t j = 0; j < tReceivedCount; j += FIFO_CHUNK_SIZE) {
+        for (uint_fast8_t j = 0; j < tReceivedCount; j += FIFO_CHUNK_SIZE) {
             // we must read all 3 values
-            for (uint8_t i = 0; i < FIFO_NUMBER_OF_ACCEL_VALUES; i++) {
+            for (uint_fast8_t i = 0; i < FIFO_NUMBER_OF_ACCEL_VALUES; i++) {
                 WordUnion tAcceleratorValue;
                 tAcceleratorValue.Byte.HighByte = Wire.read();
                 tAcceleratorValue.Byte.LowByte = Wire.read();
                 // process only forward value
-#ifdef USE_ACCELERATOR_Y_FOR_SPEED
+#if defined(USE_ACCELERATOR_Y_FOR_SPEED)
                 if (i == 1) {
 #else
                 if (i == 0) {
 #endif
-#ifdef USE_NEGATIVE_ACCELERATION_FOR_SPEED
+#if defined(USE_NEGATIVE_ACCELERATION_FOR_SPEED)
                     tAcceleratorValue.Word = (-tAcceleratorValue.Word) - AcceleratorForwardOffset;
 #else
                     tAcceleratorValue.Word = tAcceleratorValue.Word - AcceleratorForwardOffset;
@@ -330,12 +332,12 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
         GyroscopePanOffset = TurnAngle.Long / sCountOfUndisturbedFifoChunks;
         OffsetsHaveChanged = true;
         resetCarData(); // reset temporarily used values
-#ifdef DEBUG
+#if defined(DEBUG)
         printSpeedAndTurnOffsets(&Serial);
 #endif
     }
 
-#ifndef DISABLE_AUTO_OFFSET
+#if !defined(DISABLE_AUTO_OFFSET)
     doAutoOffset();
 #endif
     return true;
@@ -349,12 +351,12 @@ void IMUCarData::doAutoOffset() {
     if (AcceleratorForwardOffset != 0) {
         /*
          * Adjust Offsets, if sensor has not moved after NUMBER_OF_OFFSET_CALIBRATION_SAMPLES
-         * Requires 420 bytes FLASH
+         * Requires 420 bytes program memory
          */
         int16_t tAccelDifference = abs(AcceleratorForwardLowPass8.Word.HighWord - AcceleratorForward.Word);
         if (tAccelDifference > ACCEL_MOVE_THRESHOLD || GyroscopePan.Word < -(GYRO_MOVE_THRESHOLD)
-                || GYRO_MOVE_THRESHOLD < GyroscopePan.Word) { // using abs() costs 6 byte FLASH
-#ifdef AUTO_OFFSET_DEBUG
+                || GYRO_MOVE_THRESHOLD < GyroscopePan.Word) { // using abs() costs 6 byte program memory
+#if defined(AUTO_OFFSET_DEBUG)
             // just to show the removed deltas in Arduino Plotter
             if (AcceleratorForward.Word < -(ACCEL_MOVE_THRESHOLD) || ACCEL_MOVE_THRESHOLD < AcceleratorForward.Word) {
                 AcceleratorForward.Word = 64 * 10 * ((Speed.Long - sSpeedSnapshot) / sCountOfUndisturbedFifoChunks);
@@ -374,7 +376,7 @@ void IMUCarData::doAutoOffset() {
                     // difference is higher than 1 per sample, so adjust accelerator offset
                     AcceleratorForwardOffset += (Speed.Long - sSpeedSnapshot) / sCountOfUndisturbedFifoChunks;
                     OffsetsHaveChanged = true;
-#ifdef AUTO_OFFSET_DEBUG
+#if defined(AUTO_OFFSET_DEBUG)
                     // just to show in Arduino Plotter - 5 for each accelerator offset increment
                     AcceleratorForward.Word = 64 * 5 * ((Speed.Long - sSpeedSnapshot) / sCountOfUndisturbedFifoChunks);
 #endif
@@ -389,7 +391,7 @@ void IMUCarData::doAutoOffset() {
                     // adjust gyroscope offset and reset gyroscope to last value
                     GyroscopePanOffset += (TurnAngle.Long - sTurnSnapshot) / sCountOfUndisturbedFifoChunks;
                     OffsetsHaveChanged = true;
-#ifdef AUTO_OFFSET_DEBUG
+#if defined(AUTO_OFFSET_DEBUG)
                     // just to show in Arduino Plotter - 5 for each gyroscope offset increment
                     GyroscopePan.Word = 5 * 256 * ((TurnAngle.Long - sTurnSnapshot) / sCountOfUndisturbedFifoChunks);
 #endif
@@ -537,3 +539,5 @@ uint16_t IMUCarData::MPU6050ReadWordSwapped(uint8_t aRegisterNumber) {
     tWord.UByte.LowByte = Wire.read();
     return tWord.UWord;
 }
+#endif // _IMU_CAR_DATA_HPP
+#pragma once

@@ -27,39 +27,48 @@ jobs:
         arduino-boards-fqbn:
           - arduino:avr:uno
           - arduino:avr:uno|TimeOfFlight
-          - arduino:avr:uno|TB6612Breakout
+          - arduino:avr:uno|BreadboardFull
+          - arduino:avr:uno|Mecanum
 
         include:
           - arduino-boards-fqbn: arduino:avr:uno
             build-properties:
               RobotCarBlueDisplay:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_US_SENSOR_1_PIN_MODE
+                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DUSE_ADAFRUIT_MOTOR_SHIELD
 
-          - arduino-boards-fqbn: arduino:avr:uno|TB6612Breakout # Nano board with TB6612 breakout board
+          - arduino-boards-fqbn: arduino:avr:uno|BreadboardFull # Nano board with TB6612 breakout board
             build-properties:
               RobotCarBlueDisplay:
-                -DUSE_LAYOUT_FOR_NANO
+                -DBREADBOARD_FULL_CONFIGURATION
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_US_SENSOR_1_PIN_MODE
-                -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
-                -DCAR_HAS_PAN_SERVO
-                -DCAR_HAS_TILT_SERVO
-                -DCAR_HAS_CAMERA
-                -DCAR_HAS_LASER
-                -DENABLE_RTTTL
+                -DDO_NOT_NEED_BASIC_TOUCH_EVENTS
+                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
+                -DDO_NOT_SUPPORT_RAMP
+                -DENABLE_RTTTL_FOR_CAR
+                -DUSE_NO_RTX_EXTENSIONS
+                -mcall-prologues # reduces size by 870 bytes
+
+          - arduino-boards-fqbn: arduino:avr:uno|Mecanum # Nano board with TB6612 breakout board + 4 mecanum wheels
+            build-properties:
+              RobotCarBlueDisplay:
+                -DMECANUM_BASIC_CONFIGURATION
+                -DBLUETOOTH_BAUD_RATE=BAUD_115200
+                -DDO_NOT_NEED_BASIC_TOUCH_EVENTS
+                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
+                -DENABLE_RTTTL_FOR_CAR
+                -DUSE_NO_RTX_EXTENSIONS
                 -mcall-prologues # reduces size by 870 bytes
 
           - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
             build-properties:
               RobotCarBlueDisplay:
+                -DMOTOR_SHIELD_ENCODER_TOF_CONFIGURATION
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUSE_US_SENSOR_1_PIN_MODE
+                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
-                -DCAR_HAS_TOF_DISTANCE_SENSOR
-                -DUSE_ADAFRUIT_MOTOR_SHIELD
                 -mcall-prologues
 
     steps:

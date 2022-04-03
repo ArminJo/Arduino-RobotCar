@@ -23,8 +23,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
-#ifndef CarPWMMotorControl_H_
-#define CarPWMMotorControl_H_
+#ifndef _CAR_PWM_MOTOR_CONTROL_H
+#define _CAR_PWM_MOTOR_CONTROL_H
 
 #include "EncoderMotor.h"
 
@@ -32,8 +32,7 @@
  * Use GY-521 MPU6050 breakout board connected by I2C for support of precise turning and speed / distance calibration.
  * Connectors point to the rear.
  */
-//#define USE_MPU6050_IMU
-#ifdef USE_MPU6050_IMU
+#if defined(USE_MPU6050_IMU)
 #include "IMUCarData.h"
 #endif
 #include <stdint.h>
@@ -42,11 +41,14 @@
  * Values for 20 slot encoder discs. Circumference of the wheel is 22.0 cm
  * Distance between two wheels is around 14 cm -> 360 degree are 82 cm
  */
-#define FACTOR_DEGREE_TO_MILLIMETER_2WD_CAR_DEFAULT      2.2777
-#define FACTOR_DEGREE_TO_MILLIMETER_4WD_CAR_DEFAULT      5.0 // estimated, with slip
+#define FACTOR_DEGREE_TO_MILLIMETER_2WD_CAR_DEFAULT         2.2777
+#define FACTOR_DEGREE_TO_MILLIMETER_4WD_CAR_DEFAULT         4.1 // Estimated, with slip. Value is smaller for turn in place mode.
+#define FACTOR_DEGREE_TO_MILLIMETER_4WD_MECANUM_CAR_DEFAULT 2.2 // For turns with 4 wheels. For turn with 2 wheels it must be doubled.
 
 #if ! defined(FACTOR_DEGREE_TO_MILLIMETER_DEFAULT)
-#  if defined(CAR_HAS_4_WHEELS)
+#  if defined(CAR_HAS_4_MECANUM_WHEELS)
+#define FACTOR_DEGREE_TO_MILLIMETER_DEFAULT  FACTOR_DEGREE_TO_MILLIMETER_4WD_MECANUM_CAR_DEFAULT
+#  elif defined(CAR_HAS_4_WHEELS)
 #define FACTOR_DEGREE_TO_MILLIMETER_DEFAULT  FACTOR_DEGREE_TO_MILLIMETER_4WD_CAR_DEFAULT
 #  else
 #define FACTOR_DEGREE_TO_MILLIMETER_DEFAULT  FACTOR_DEGREE_TO_MILLIMETER_2WD_CAR_DEFAULT
@@ -54,9 +56,12 @@
 #endif
 
 // turn directions
-#define TURN_FORWARD    DIRECTION_FORWARD  // 0
-#define TURN_BACKWARD   DIRECTION_BACKWARD // 1
-#define TURN_IN_PLACE   2
+typedef enum turn_direction {
+    TURN_FORWARD, TURN_BACKWARD, TURN_IN_PLACE
+} turn_direction_t;
+//#define TURN_FORWARD    DIRECTION_FORWARD  // 0
+//#define TURN_BACKWARD   DIRECTION_BACKWARD // 1
+//#define TURN_IN_PLACE   2
 
 class CarPWMMotorControl {
 public:
@@ -64,36 +69,42 @@ public:
     CarPWMMotorControl();
 //    virtual ~CarPWMMotorControl();
 
-#ifdef USE_ADAFRUIT_MOTOR_SHIELD
+#if defined(USE_ADAFRUIT_MOTOR_SHIELD)
     void init();
 #else
+#  if defined(CAR_HAS_4_MECANUM_WHEELS)
+    void init(uint8_t aRightMotorForwardPin, uint8_t aRightMotorBackwardPin, uint8_t aPWMPin, uint8_t aLeftMotorForwardPin,
+            uint8_t aLeftMotorBackwardPin, uint8_t aBackRightCarMotorForwardPin, uint8_t aBackRightCarMotorBackwardPin,
+            uint8_t aBackLeftCarMotorForwardPin, uint8_t aBackLeftCarMotorBackwardPin);
+#  else
     void init(uint8_t aRightMotorForwardPin, uint8_t aRightMotorBackwardPin, uint8_t aRightPWMPin, uint8_t aLeftMotorForwardPin,
-            uint8_t LeftMotorBackwardPin, uint8_t aLeftMotorPWMPin);
+            uint8_t aLeftMotorBackwardPin, uint8_t aLeftMotorPWMPin);
     void init(uint8_t aRightMotorForwardPin, uint8_t aRightMotorBackwardPin, uint8_t aRightPWMPin, uint8_t aRightInterruptNumber,
             uint8_t aLeftMotorForwardPin, uint8_t LeftMotorBackwardPin, uint8_t aLeftMotorPWMPin, uint8_t aLeftInterruptNumber);
+#  endif // defined(CAR_HAS_4_MECANUM_WHEELS)
 #endif // USE_ADAFRUIT_MOTOR_SHIELD
 
     void setDefaultsForFixedDistanceDriving();
-    void setValuesForFixedDistanceDriving(uint8_t aStartSpeedPWM, uint8_t aDriveSpeedPWM, int8_t aSpeedPWMCompensationRight);
-    void changeSpeedPWMCompensation(int8_t aSpeedPWMCompensationRight);
-    void setStartSpeedPWM(uint8_t aStartSpeedPWM);
+    void setDriveSpeedAndSpeedCompensationPWM(uint8_t aDriveSpeedPWM, int8_t aSpeedPWMCompensationRight);
+    void setSpeedPWMCompensation(int8_t aSpeedPWMCompensationRight);
+    void changeSpeedPWMCompensation(int8_t aSpeedPWMCompensationRightDelta);
     void setDriveSpeedPWM(uint8_t aDriveSpeedPWM);
 
     void writeMotorValuesToEeprom();
     void readMotorValuesFromEeprom();
 
 #if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
-    void calibrate(void (*aLoopCallback)(void)); // aLoopCallback must call readCarDataFromMPU6050Fifo()
+    void getStartSpeedPWM(void (*aLoopCallback)(void)); // aLoopCallback must call readCarDataFromMPU6050Fifo()
     unsigned int getBrakingDistanceMillimeter();
     uint8_t getTurnDistanceHalfDegree();
 #endif
 
-#ifdef USE_MPU6050_IMU
+#if defined(USE_MPU6050_IMU)
     void updateIMUData();
     void calculateAndPrintIMUOffsets(Print *aSerial);
 #endif
 
-#ifdef USE_ENCODER_MOTOR_CONTROL
+#if defined(USE_ENCODER_MOTOR_CONTROL)
     // retrieves values from right motor
     unsigned int getDistanceCount();
     unsigned int getDistanceMillimeter();
@@ -104,7 +115,7 @@ public:
 
     // If ramp up is not supported, these functions just sets the speed and return immediately
     void startRampUp(uint8_t aRequestedDirection = DIRECTION_FORWARD);
-    void startRampUp(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
+    void setSpeedPWMWithRamp(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
     void waitForDriveSpeedPWM(void (*aLoopCallback)(void) = NULL);
     void startRampUpAndWait(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection = DIRECTION_FORWARD,
             void (*aLoopCallback)(void) = NULL);
@@ -113,14 +124,15 @@ public:
     /*
      * For car direction handling
      */
-    uint8_t getCarDirectionOrBrakeMode();
-    uint8_t CarDirectionOrBrakeMode;
+    uint8_t getCarDirection();
+    uint8_t CarDirection;
 
     /*
      * Functions for moving a fixed distance
      */
     // With signed distance
-    void startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection); // only setup values
+    void startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+            uint8_t aRequestedDirection); // only setup values
     void startGoDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection); // only setup values
     void startGoDistanceMillimeter(int aRequestedDistanceMillimeter); // only setup values, no movement -> use updateMotors()
 
@@ -134,18 +146,11 @@ public:
      * Functions for rotation
      */
     void setFactorDegreeToMillimeter(float aFactorDegreeToMillimeter);
-#if defined(CAR_HAS_4_WHEELS)
-    // slow speed does not really work for 4 WD cars
-    void startRotate(int aRotationDegrees, uint8_t aTurnDirection, bool aUseSlowSpeed = false);
-    void rotate(int aRotationDegrees, uint8_t aTurnDirection = TURN_IN_PLACE,
-            void (*aLoopCallback)(void) = NULL, bool aUseSlowSpeed = false);
-#else
-    void startRotate(int aRotationDegrees, uint8_t aTurnDirection, bool aUseSlowSpeed = true);
-    void rotate(int aRotationDegrees, uint8_t aTurnDirection = TURN_IN_PLACE,
-            void (*aLoopCallback)(void) = NULL, bool aUseSlowSpeed = true);
-#endif
+    void startRotate(int aRotationDegrees, turn_direction_t aTurnDirection, bool aUseSlowSpeed = false);
+    void rotate(int aRotationDegrees, turn_direction_t aTurnDirection = TURN_IN_PLACE, bool aUseSlowSpeed = false,
+            void (*aLoopCallback)(void) = NULL);
 
-#ifdef USE_MPU6050_IMU
+#if defined(USE_MPU6050_IMU)
     IMUCarData IMUData;
     int CarRequestedRotationDegrees; // 0 -> car is moving forward / backward
     int CarTurnAngleHalfDegreesFromIMU; // Read from Gyroscope
@@ -176,31 +181,36 @@ public:
     bool isState(uint8_t aState);
     bool isStateRamp(); // MOTOR_STATE_RAMP_UP OR MOTOR_STATE_RAMP_DOWN
 
-    void resetControlValues();
+    void resetEncoderControlValues();
 
     /*
      * Functions, which directly call motor functions for both motors
      */
-    void changeSpeedPWMCompensated(uint8_t aRequestedSpeedPWM); // Keeps direction
-    void setSpeedPWMCompensated(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
-    void setSpeedPWMCompensated(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection, int8_t aLeftRightSpeedPWM);
-    void stop(uint8_t aStopMode = STOP_MODE_KEEP); // STOP_MODE_KEEP (take previously defined DefaultStopMode) or MOTOR_BRAKE or MOTOR_RELEASE
+    void setSpeedPWM(uint8_t aRequestedSpeedPWM);
+    void setDirection(uint8_t aRequestedDirection);
 
-    void setSpeedPWM(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
+    void setSpeedPWMAndDirection(int aRequestedSpeedPWM);
+    void setSpeedPWMAndDirection(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
+    void setSpeedPWMWithDeltaAndDirection(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection, int8_t aLeftRightSpeedPWMDelta);
+    void changeSpeedPWM(uint8_t aRequestedSpeedPWM); // Keeps direction
+
+    void stop(uint8_t aStopMode = STOP_MODE_KEEP); // STOP_MODE_KEEP (take previously defined DefaultStopMode) or STOP_MODE_BRAKE or STOP_MODE_RELEASE
     void setStopMode(uint8_t aStopMode);
-    void setSpeedPWM(int aRequestedSpeedPWM);
-    void setSpeedPWMCompensated(int aRequestedSpeedPWM);
 
-#ifdef USE_ENCODER_MOTOR_CONTROL
+#if defined(USE_ENCODER_MOTOR_CONTROL)
     EncoderMotor rightCarMotor; // 40 bytes RAM
     EncoderMotor leftCarMotor;
 #else
     PWMDcMotor rightCarMotor;
     PWMDcMotor leftCarMotor;
 #endif
+#if defined(CAR_HAS_4_MECANUM_WHEELS) // back motors are always without encoders
+    PWMDcMotor backRightCarMotor;
+    PWMDcMotor backLeftCarMotor;
+#endif
 };
 
-#endif /* CarPWMMotorControl_H_ */
+extern CarPWMMotorControl RobotCarPWMMotorControl;
 
+#endif // _CAR_PWM_MOTOR_CONTROL_H
 #pragma once
-

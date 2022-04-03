@@ -1012,16 +1012,14 @@ VL53L1X_ERROR VL53L1X::VL53L1_UpdateByte(VL53L1_DEV Dev, uint16_t index, uint8_t
    return status;
 }
 
-#include "BlueDisplay.h"
-
 VL53L1X_ERROR VL53L1X::VL53L1_I2CWrite(uint8_t DeviceAddr, uint16_t RegisterAddr, uint8_t* pBuffer, uint8_t NumByteToWrite)
 {
-#ifdef DEBUG_MODE
+#if defined(DEBUG_MODE)
    Serial.print("Beginning transmission to ");
    Serial.println(((DeviceAddr) >> 1) & 0x7F);
 #endif
    dev_i2c->beginTransmission(((uint8_t)(((DeviceAddr) >> 1) & 0x7F)));
-#ifdef DEBUG_MODE
+#if defined(DEBUG_MODE)
    Serial.print("Writing port number ");
    Serial.println(RegisterAddr);
 #endif
@@ -1034,7 +1032,6 @@ VL53L1X_ERROR VL53L1X::VL53L1_I2CWrite(uint8_t DeviceAddr, uint16_t RegisterAddr
 
    uint8_t tStatus= dev_i2c->endTransmission(true);
    if(tStatus != 0) {
-       BlueDisplay1.debug("i2c=",tStatus );
        return 1;
    }
    return 0;
@@ -1045,12 +1042,12 @@ VL53L1X_ERROR VL53L1X::VL53L1_I2CRead(uint8_t DeviceAddr, uint16_t RegisterAddr,
    int status = 0;
 //Loop until the port is transmitted correctly
    do {
-#ifdef DEBUG_MODE
+#if defined(DEBUG_MODE)
    Serial.print("Beginning transmission to ");
    Serial.println(((DeviceAddr) >> 1) & 0x7F);
 #endif
    dev_i2c->beginTransmission(((uint8_t)(((DeviceAddr) >> 1) & 0x7F)));
-#ifdef DEBUG_MODE
+#if defined(DEBUG_MODE)
    Serial.print("Writing port number ");
    Serial.println(RegisterAddr);
 #endif
@@ -1061,7 +1058,7 @@ VL53L1X_ERROR VL53L1X::VL53L1_I2CRead(uint8_t DeviceAddr, uint16_t RegisterAddr,
    status = dev_i2c->endTransmission(false);
 //Fix for some STM32 boards
 //Reinitialize th i2c bus with the default parameters
-#ifdef ARDUINO_ARCH_STM32
+#if defined(ARDUINO_ARCH_STM32)
 	if (status){
 		dev_i2c->end();
 		dev_i2c->begin();

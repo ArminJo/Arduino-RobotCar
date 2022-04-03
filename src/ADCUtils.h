@@ -21,10 +21,10 @@
  *
  */
 
-#ifndef SRC_ADCUTILS_H_
-#define SRC_ADCUTILS_H_
+#ifndef _ADC_UTILS_H
+#define _ADC_UTILS_H
 
-#if defined(__AVR__) && (! defined(__AVR_ATmega4809__))
+#if defined(__AVR__) && (!defined(__AVR_ATmega4809__))
 #include <Arduino.h>
 #if defined(ADATE)
 
@@ -45,6 +45,14 @@
 #define ADC_PRESCALE ADC_PRESCALE64
 #elif (F_CPU == 16000000)
 #define ADC_PRESCALE ADC_PRESCALE128
+#endif
+
+/*
+ * By replacing this value with the voltage you measured a the AREF pin after a conversion
+ * with INTERNAL you can calibrate your ADC readout. For my Nanos I measured e.g. 1060 mV and 1093 mV.
+ */
+#if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
+#define ADC_INTERNAL_REFERENCE_MILLIVOLT 1100L    // Value measured at the AREF pin
 #endif
 
 /*
@@ -71,9 +79,12 @@
 
 #define SHIFT_VALUE_FOR_REFERENCE REFS2
 #define MASK_FOR_ADC_REFERENCE (_BV(REFS0) | _BV(REFS1) | _BV(REFS2))
+#define MASK_FOR_ADC_CHANNELS (_BV(MUX0) | _BV(MUX1) | _BV(MUX2) | _BV(MUX3))
 #else // AVR_ATtiny85
+
 #define SHIFT_VALUE_FOR_REFERENCE REFS0
 #define MASK_FOR_ADC_REFERENCE (_BV(REFS0) | _BV(REFS1))
+#define MASK_FOR_ADC_CHANNELS (_BV(MUX0) | _BV(MUX1) | _BV(MUX2) | _BV(MUX3))
 #endif
 
 // Temperature channel definitions - 1 LSB / 1 degree Celsius
@@ -110,7 +121,10 @@
 
 uint16_t readADCChannel(uint8_t aChannelNumber);
 uint16_t readADCChannelWithReference(uint8_t aChannelNumber, uint8_t aReference);
+uint16_t waitAndReadADCChannelWithReference(uint8_t aChannelNumber, uint8_t aReference);
+uint16_t waitAndReadADCChannelWithReferenceAndRestoreADMUX(uint8_t aChannelNumber, uint8_t aReference);
 uint16_t readADCChannelWithOversample(uint8_t aChannelNumber, uint8_t aOversampleExponent);
+void setADCMultiplexerAndReferenceForNextConversion(uint8_t aChannelNumber, uint8_t aReference);
 uint16_t readADCChannelWithReferenceOversample(uint8_t aChannelNumber, uint8_t aReference, uint8_t aOversampleExponent);
 uint16_t readADCChannelWithReferenceOversampleFast(uint8_t aChannelNumber, uint8_t aReference, uint8_t aOversampleExponent);
 uint16_t readADCChannelWithReferenceMultiSamples(uint8_t aChannelNumber, uint8_t aReference, uint8_t aNumberOfSamples);
@@ -126,11 +140,15 @@ uint16_t getVCCVoltageMillivoltSimple(void);
 float getTemperatureSimple(void);
 float getVCCVoltage(void);
 uint16_t getVCCVoltageMillivolt(void);
-void printVCCVoltageMillivolt(Print* aSerial);
+uint16_t getVCCVoltageReadingFor1_1VoltReference(void);
+uint16_t printVCCVoltageMillivolt(Print *aSerial);
+void printVCCVoltageMillivolt(Print *aSerial, uint16_t aVCCVoltageMillivolt);
+uint16_t getVoltageMillivolt(uint16_t aVCCVoltageMillivolt, uint8_t aADCChannelForVoltageMeasurement);
+uint16_t getVoltageMillivolt(uint8_t aADCChannelForVoltageMeasurement);
+uint16_t getVoltageMillivoltWith_1_1VoltReference(uint8_t aADCChannelForVoltageMeasurement);
 float getTemperature(void);
 
 #endif // defined(ADATE)
 #endif //  defined(__AVR__)
-#endif /* SRC_ADCUTILS_H_ */
-
+#endif // _ADC_UTILS_H
 #pragma once

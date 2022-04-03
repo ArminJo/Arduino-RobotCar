@@ -1,5 +1,5 @@
 /*
- *  LightweightServo.cpp
+ *  LightweightServo.hpp
  *
  *  Lightweight Servo implementation only for pin 9 and 10 using only timer1 hardware and no interrupts or other overhead.
  *  Provides auto initialization.
@@ -25,6 +25,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  *
  */
+
+#ifndef _LIGHTWEIGHT_SERVO_HPP
+#define _LIGHTWEIGHT_SERVO_HPP
 
 #include <Arduino.h>
 
@@ -72,12 +75,12 @@ void initLightweightServoPin9_10(bool aUsePin9, bool aUsePin10) {
     if (aUsePin9) {
         DDRB |= _BV(DDB1);                          // set OC1A = PortB1 -> PIN 9 to output direction
         tNewTCCR1A |= _BV(COM1A1);                  // non-inverting Compare Output mode OC1A
-        OCR1A = 0xFFFF;                                 // Set counter > ICR1 here, to avoid output signal generation.
+        OCR1A = UINT16_MAX;                         // Set counter > ICR1 here, to avoid output signal generation.
    }
     if (aUsePin10) {
         DDRB |= _BV(DDB2);                          // set OC1B = PortB2 -> PIN 10 to output direction
         tNewTCCR1A |= _BV(COM1B1);                  // non-inverting Compare Output mode OC1B
-        OCR1B = 0xFFFF;                                 // Set counter > ICR1 here, to avoid output signal generation.
+        OCR1B = UINT16_MAX;                         // Set counter > ICR1 here, to avoid output signal generation.
     }
     TCCR1A = tNewTCCR1A;
     TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS11);   // set prescaler to 8, FastPWM Mode mode bits WGM13 + WGM12
@@ -92,7 +95,7 @@ void initLightweightServoPin9() {
     TCCR1A = _BV(WGM11) | _BV(COM1A1);  //  FastPWM Mode mode TOP (20 ms) determined by ICR1, non-inverting Compare Output mode OC1A
     TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS11);   // set prescaler to 8, FastPWM Mode mode bits WGM13 + WGM12
     ICR1 = ISR1_COUNT_FOR_20_MILLIS;                // set period to 20 ms
-    OCR1A = 0xFFFF;                                 // Set counter > ICR1 here, to avoid output signal generation.
+    OCR1A = UINT16_MAX;                             // Set counter > ICR1 here, to avoid output signal generation.
 }
 /*
  * Disables Pin 9!
@@ -102,7 +105,7 @@ void initLightweightServoPin10() {
     TCCR1A = _BV(WGM11) | _BV(COM1B1);  //  FastPWM Mode mode TOP (20 ms) determined by ICR1, non-inverting Compare Output mode OC1B
     TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS11);   // set prescaler to 8, FastPWM Mode mode bits WGM13 + WGM12
     ICR1 = ISR1_COUNT_FOR_20_MILLIS;                // set period to 20 ms
-    OCR1B = 0xFFFF;                                 // Set counter > ICR1 here, to avoid output signal generation.
+    OCR1B = UINT16_MAX;                             // Set counter > ICR1 here, to avoid output signal generation.
 }
 
 void deinitLightweightServoPin9_10(bool aUsePin9, bool aUsePin10) {
@@ -131,7 +134,7 @@ int writeLightweightServo(int aDegree, bool aUsePin9, bool aUpdateFast) {
 }
 
 void writeMicrosecondsLightweightServo(int aMicroseconds, bool aUsePin9, bool aUpdateFast) {
-#ifndef DISABLE_SERVO_TIMER_AUTO_INITIALIZE
+#if !defined(DISABLE_SERVO_TIMER_AUTO_INITIALIZE)
     // auto initialize
     if ((TCCR1B != (_BV(WGM13) | _BV(WGM12) | _BV(CS11))) || (aUsePin9 && ((TCCR1A & ~_BV(COM1B1)) != (_BV(COM1A1) | _BV(WGM11))))
             || (!aUsePin9 && ((TCCR1A & ~_BV(COM1A1)) != (_BV(COM1B1) | _BV(WGM11))))) {
@@ -216,5 +219,6 @@ int MicrosecondsToDegreeLightweightServo(int aMicroseconds) {
     return map(aMicroseconds, sMicrosecondsForServo0Degree, sMicrosecondsForServo180Degree, 0, 180);
 }
 
-#endif
-
+#endif // defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__)
+#endif // _LIGHTWEIGHT_SERVO_HPP
+#pragma once

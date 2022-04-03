@@ -1,8 +1,7 @@
 /*
  * RobotCarGui.h
  *
- *  Created on: 20.09.2016
- *  Copyright (C) 2016-2020  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2022  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
@@ -16,8 +15,10 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
 
-#ifndef SRC_ROBOTCARGUI_H_
-#define SRC_ROBOTCARGUI_H_
+#ifndef _ROBOT_CAR_GUI_H
+#define _ROBOT_CAR_GUI_H
+
+#define USE_BLUE_DISPLAY_GUI
 
 #include "BlueDisplay.h"
 #include "AutonomousDrive.h"
@@ -30,7 +31,6 @@
 
 #define PATH_LENGTH_MAX 100
 
-#define PRINT_VOLTAGE_PERIOD_MILLIS 2000
 #define PRINT_MOTOR_INFO_PERIOD_MILLIS 200
 
 // a string buffer for BD info output
@@ -47,6 +47,7 @@ extern char sStringBuffer[128];
 #define LASER_SLIDER_SIZE       BUTTON_HEIGHT_4_LINE_3  // 128
 #define DISTANCE_SLIDER_SIZE    (BUTTON_HEIGHT_4_LINE_3 - BUTTON_HEIGHT_8)  // 104
 #define DISTANCE_SLIDER_SCALE_FACTOR    2 // Slider is virtually 2 times larger, values were divided by 2
+#define DISTANCE_DISPLAY_PERIOD_MILLIS      500
 
 #define US_DISTANCE_MAP_ORIGIN_X 200
 #define US_DISTANCE_MAP_ORIGIN_Y 150
@@ -62,10 +63,14 @@ extern char sStringBuffer[128];
 #define PAGE_LAST_NUMBER        PAGE_SHOW_PATH
 extern uint8_t sCurrentPage;
 
-void showUSDistance(unsigned int aCentimeter, bool aForceDraw = false);
-void showIRDistance(unsigned int aCentimeter);
+#if defined(CAR_HAS_US_DISTANCE_SENSOR)
+void showUSDistance();
+#endif
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_CAR_HAS_TOF_DISTANCE_SENSOR)
+void showIROrTofDistance();
+#endif
 
-#ifdef ENABLE_PATH_INFO_PAGE
+#if defined(ENABLE_PATH_INFO_PAGE)
 // from PathInfoPage
 void initPathInfoPage(void);
 void drawPathInfoPage(void);
@@ -81,7 +86,7 @@ void insertToPath(int aLength, int aDegree, bool aAddEntry);
 // from AutonomousDrivePage
 extern BDButton TouchButtonStep;
 extern BDButton TouchButtonScanSpeed;
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_CAR_HAS_TOF_DISTANCE_SENSOR)
 extern BDButton TouchButtonScanMode;
 #endif
 
@@ -110,7 +115,7 @@ extern uint8_t sSensorChangeCallCountForZeroAdjustment;
 void doSensorChange(uint8_t aSensorType, struct SensorCallback *aSensorCallbackInfo);
 
 // from TestPage
-extern bool sShowDebug;
+extern bool sShowInfo;
 
 void initTestPage(void);
 void drawTestPage(void);
@@ -120,7 +125,7 @@ void stopTestPage(void);
 
 // from HomePage
 extern BDButton TouchButtonMelody;
-#ifdef ENABLE_RTTTL
+#if defined(ENABLE_RTTTL_FOR_CAR)
 extern bool sPlayMelody;
 #endif
 
@@ -138,7 +143,6 @@ void stopHomePage(void);
  */
 extern uint8_t sCurrentPage;
 extern BDButton TouchButtonAutomaticDrivePage;
-extern BDButton TouchButtonReset;
 extern BDButton TouchButtonBack;
 void GUISwitchPages(BDButton *aTheTouchedButton, int16_t aValue);
 void startCurrentPage();
@@ -146,6 +150,9 @@ void startCurrentPage();
 /*
  * Common GUI elements
  */
+extern BDButton TouchButtonReset;
+extern BDButton TouchButtonRes;
+
 extern BDButton TouchButtonRobotCarStartStop;
 void setStartStopButtonValue();
 void startStopRobotCar(bool aDoStart);
@@ -153,14 +160,15 @@ void doStartStopRobotCar(BDButton *aTheTochedButton, int16_t aDoStart);
 void doReset(BDButton *aTheTochedButton, int16_t aValue);
 
 extern BDButton TouchButtonDirection;
+extern BDButton TouchButtonInfo;
 
 #if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
 extern BDButton TouchButtonCalibrate;
-void doCalibrate(BDButton *aTheTouchedButton, int16_t aValue);
+//void doCalibrate(BDButton *aTheTouchedButton, int16_t aValue);
 #endif
 extern BDButton TouchButtonCompensationRight;
 extern BDButton TouchButtonCompensationLeft;
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
 extern BDButton TouchButtonCompensationStore;
 #endif
 
@@ -171,22 +179,22 @@ void showSpeedSliderValue();
 extern BDSlider SliderSpeedRight;
 extern BDSlider SliderSpeedLeft;
 
-extern BDSlider SliderUSPosition;
+extern BDSlider SliderDistanceServoPosition;
 extern BDSlider SliderUSDistance;
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-extern BDSlider SliderIRDistance;
+#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_CAR_HAS_TOF_DISTANCE_SENSOR)
+extern BDSlider SliderIROrTofDistance;
 #endif
 
-#ifdef CAR_HAS_PAN_SERVO
+#if defined(CAR_HAS_PAN_SERVO)
 extern BDSlider SliderPan;
 #endif
-#ifdef CAR_HAS_TILT_SERVO
+#if defined(CAR_HAS_TILT_SERVO)
 extern BDSlider SliderTilt;
 #endif
 
 #if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
 void displayMotorSpeedSliderValues();
-void printMotorSensorValues();
+void printMotorSpeedSensorValues();
 #endif
 #if defined(USE_MPU6050_IMU)
 void printIMUOffsetValues();
@@ -198,6 +206,7 @@ extern char sStringBuffer[128];
 
 void setupGUI(void);
 void loopGUI(void);
+void initCommonGui(void);
 
 void initRobotCarDisplay(void);
 void readAndShowDistancePeriodically();
@@ -206,10 +215,6 @@ void showDistance(int aCentimeter);
 
 void printAndDisplayMotorSpeed();
 void printMotorValuesPeriodically();
-#ifdef USE_ENCODER_MOTOR_CONTROL
-void printMotorDebugValues();
-void printMotorDistanceValues();
-#endif
 
 #if defined(MONITOR_VIN_VOLTAGE)
 void readAndPrintVin();
@@ -221,13 +226,13 @@ void delayAndLoopGUI(uint16_t aDelayMillis);
 /*
  * Functions contained in RobotCarGuiOutput.cpp
  */
-void clearPrintedForwardDistancesInfos();
+#if defined(CAR_HAS_DISTANCE_SERVO)
 void drawForwardDistancesInfos();
+void clearPrintedForwardDistancesInfos();
 void drawCollisionDecision(int aDegreesToTurn, uint8_t aLengthOfVector, bool aDoClearVector);
+#endif
 
 extern uint8_t sRobotCarDirection;
-extern bool sRuningAutonomousDrive;
 
-#endif /* SRC_ROBOTCARGUI_H_ */
-
+#endif // _ROBOT_CAR_GUI_H
 #pragma once

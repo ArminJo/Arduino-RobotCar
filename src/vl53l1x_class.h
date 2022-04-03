@@ -31,7 +31,7 @@
 
 
 #ifdef _MSC_VER
-#   ifdef VL53L1X_API_EXPORTS
+#   if defined(VL)53L1X_API_EXPORTS
 #       define VL53L1X_API  __declspec(dllexport)
 #   else
 #       define VL53L1X_API
@@ -195,7 +195,7 @@ class VL53L1X : public RangeSensor
 		VL53L1_On();
 		status = VL53L1X_SetI2CAddress(address);
 
-#ifdef DEBUG_MODE
+#if defined(DEBUG_MODE)
 		uint8_t byteData;
 		uint16_t wordData;
 		status = VL53L1_RdByte(Device, 0x010F, &byteData);

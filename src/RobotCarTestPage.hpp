@@ -1,12 +1,11 @@
 /*
- * TestPage.cpp
+ * RobotCarTestPage.hpp
  *
- *  Contains all GUI elements for test controlling the RobotCarMotorControl.
+ *  Contains all GUI elements for test controlling the RobotCarPWMMotorControl.
  *
  *  Requires BlueDisplay library.
  *
- *  Created on: 20.09.2016
- *  Copyright (C) 2016-2020  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2022  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
@@ -19,7 +18,13 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
-#include "RobotCar.h"
+#ifndef _ROBOT_CAR_TEST_PAGE_HPP
+#define _ROBOT_CAR_TEST_PAGE_HPP
+#include <Arduino.h>
+
+#include "RobotCarPinDefinitionsAndMore.h"
+#include "RobotCarBlueDisplay.h"
+
 #include "RobotCarGui.h"
 #include "Distance.h"
 
@@ -28,11 +33,9 @@
  */
 BDButton TouchButtonReset;
 
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
 BDButton TouchButtonGetAndStoreSpeed;
 #endif
-
-BDButton TouchButtonDebug;
 
 BDButton TouchButton5cm;
 BDButton TouchButton10cm;
@@ -45,16 +48,13 @@ BDButton TouchButton90DegreeRight;
 BDButton TouchButton90DegreeLeft;
 BDButton TouchButton360Degree;
 
-bool sShowDebug = false;
+bool sShowInfo = true;
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void doDistance(BDButton *aTheTouchedButton, int16_t aValue) {
-    RobotCarMotorControl.startGoDistanceMillimeter(aValue, sRobotCarDirection);
+    RobotCarPWMMotorControl.startGoDistanceMillimeter(aValue, sRobotCarDirection);
 }
 
-void doShowDebug(BDButton *aTheTouchedButton, int16_t aValue) {
-    sShowDebug = aValue;
-}
 
 /*
  * stop and reset motors
@@ -62,7 +62,7 @@ void doShowDebug(BDButton *aTheTouchedButton, int16_t aValue) {
  */
 void doReset(BDButton *aTheTouchedButton, int16_t aValue) {
     startStopRobotCar(false);
-    RobotCarMotorControl.resetControlValues();
+    RobotCarPWMMotorControl.resetEncoderControlValues();
     sLastSpeedSliderValue = 0;
 }
 
@@ -72,13 +72,13 @@ void doRotation(BDButton *aTheTouchedButton, int16_t aValue) {
         if (sRobotCarDirection != DIRECTION_FORWARD) {
             aValue = -aValue;
         }
-        RobotCarMotorControl.startRotate(aValue, TURN_IN_PLACE);
+        RobotCarPWMMotorControl.startRotate(aValue, TURN_IN_PLACE);
     } else {
-        RobotCarMotorControl.startRotate(aValue, sRobotCarDirection);
+        RobotCarPWMMotorControl.startRotate(aValue, (turn_direction_t) sRobotCarDirection);
     }
 }
 
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
 /*
  * Callback handler for user speed input
  * Store user speed input as DriveSpeed
@@ -87,10 +87,10 @@ void doStoreSpeed(float aValue) {
     uint16_t tValue = aValue;
     if (tValue > 10 && tValue < 256) {
         // must use value for compensation not compensated value
-        RobotCarMotorControl.rightCarMotor.DriveSpeed = tValue;
+        RobotCarPWMMotorControl.rightCarMotor.DriveSpeed = tValue;
         // use the same value here !
-        RobotCarMotorControl.leftCarMotor.DriveSpeed = tValue;
-        RobotCarMotorControl.writeMotorValuesToEeprom();
+        RobotCarPWMMotorControl.leftCarMotor.DriveSpeed = tValue;
+        RobotCarPWMMotorControl.writeMotorValuesToEeprom();
     }
     printMotorValues();
 }
@@ -104,41 +104,15 @@ void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
 }
 #endif
 
+/*
+ * replacing parameter init with structure init INCREASES code size by 82 bytes
+ */
 //const struct ButtonInit ButtonReset PROGMEM { BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
 //COLOR16_BLUE, TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset };
-//
 //const struct ButtonInit Button5cm PROGMEM { BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
 //COLOR16_BLUE, TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 50, &doDistance };
 //const struct ButtonInit Button10cm PROGMEM { BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
 //COLOR16_BLUE, TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 100, &doDistance };
-//
-//const struct ButtonInit Button20cm PROGMEM { BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE, TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 200, &doDistance };
-//const struct ButtonInit Button40cm PROGMEM { BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE, TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 400, &doDistance };
-//const struct ButtonInit ButtonDebug PROGMEM { BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_RED, TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doShowDebug };
-//
-//const struct ButtonInit Button45DegreeLeft PROGMEM { BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE,
-//TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation }; // \xB0 is degree character
-//const struct ButtonInit Button45DegreeRight PROGMEM { BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE,
-//TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -45, &doRotation }; // \xB0 is degree character
-//const struct ButtonInit Button360Degree PROGMEM { BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE,
-//TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 360, &doRotation }; // \xB0 is degree character
-//
-//const struct ButtonInit Button90DegreeLeft PROGMEM { BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_6, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE,
-//TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 90, &doRotation }; // \xB0 is degree character
-//const struct ButtonInit Button90DegreeRight PROGMEM { BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_6, BUTTON_WIDTH_8, BUTTON_HEIGHT_8,
-//COLOR16_BLUE,
-//TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, -90, &doRotation }; // \xB0 is degree character
-
-/*
- * replacing parameter init with structure init INCREASES code size by 82 bytes
- */
 void initTestPage(void) {
     /*
      * Control buttons
@@ -146,7 +120,7 @@ void initTestPage(void) {
     TouchButtonReset.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
     COLOR16_BLUE, F("Reset"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset);
 
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
     TouchButtonGetAndStoreSpeed.init(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_6 - BUTTON_DEFAULT_SPACING_QUARTER, BUTTON_WIDTH_6,
     BUTTON_HEIGHT_6, COLOR16_BLUE, F("Set\nspeed"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doGetSpeedAsNumber);
 #endif
@@ -163,8 +137,6 @@ void initTestPage(void) {
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 200, &doDistance);
     TouchButton40cm.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE, F("40cm"),
     TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 400, &doDistance);
-    TouchButtonDebug.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_RED, F("dbg"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, false, &doShowDebug);
 
 //    TouchButtonReset.init(&ButtonReset, F("Reset"));
 //    TouchButton5cm.init(&Button5cm, F("5cm"));
@@ -172,7 +144,7 @@ void initTestPage(void) {
 //
 //    TouchButton20cm.init(&Button20cm, F("20cm"));
 //    TouchButton40cm.init(&Button40cm, F("40cm"));
-//    TouchButtonDebug.init(&ButtonDebug, F("dbg"));
+//    TouchButtonInfo.init(&ButtonDebug, F("dbg"));
 
     TouchButton45DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE,
             F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation); // \xB0 is degree character
@@ -210,7 +182,7 @@ void drawTestPage(void) {
 
     TouchButton20cm.drawButton();
     TouchButton40cm.drawButton();
-    TouchButtonDebug.drawButton();
+    TouchButtonInfo.drawButton();
 
     TouchButton45DegreeLeft.drawButton();
     TouchButton45DegreeRight.drawButton();
@@ -218,7 +190,7 @@ void drawTestPage(void) {
 
     TouchButtonCompensationLeft.drawButton();
     TouchButtonCompensationRight.drawButton();
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
     TouchButtonCompensationStore.drawButton();
 #endif
 
@@ -227,20 +199,19 @@ void drawTestPage(void) {
     TouchButtonDirection.drawButton();
 
     SliderSpeed.drawSlider();
-#ifdef USE_ENCODER_MOTOR_CONTROL
+#if defined(USE_ENCODER_MOTOR_CONTROL)
     SliderSpeedRight.drawSlider();
     SliderSpeedLeft.drawSlider();
 #endif
-#ifdef SUPPORT_EEPROM_STORAGE
+#if defined(ENABLE_EEPROM_STORAGE)
     TouchButtonGetAndStoreSpeed.drawButton();
 #endif
 
-    SliderUSPosition.setValueAndDrawBar(sLastServoAngleInDegrees);
-    SliderUSPosition.drawSlider();
+    SliderDistanceServoPosition.drawSlider();
     SliderUSDistance.drawSlider();
 
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-    SliderIRDistance.drawSlider();
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_CAR_HAS_TOF_DISTANCE_SENSOR)
+    SliderIROrTofDistance.drawSlider();
 #  endif
 
     PWMDcMotor::MotorControlValuesHaveChanged = true; // trigger drawing of values
@@ -259,3 +230,5 @@ void loopTestPage(void) {
 
 void stopTestPage(void) {
 }
+#endif // _ROBOT_CAR_TEST_PAGE_HPP
+#pragma once

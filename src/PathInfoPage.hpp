@@ -1,5 +1,5 @@
 /*
- * PathInfoPage.cpp
+ * PathInfoPage.hpp
  *
  *  Contains all the GUI elements for managing and showing the path.
  *
@@ -21,12 +21,15 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/gpl.html>.
  */
+#ifndef _ROBOT_CAR_PATH_INFO_PAGE_HPP
+#define _ROBOT_CAR_PATH_INFO_PAGE_HPP
+#include <Arduino.h>
 
-#include "RobotCar.h"
+#include "RobotCarPinDefinitionsAndMore.h"
 #include "RobotCarGui.h"
 #include "Distance.h"
 
-#ifdef ENABLE_PATH_INFO_PAGE
+#if defined(ENABLE_PATH_INFO_PAGE)
 BDButton TouchButtonResetPath;
 BDButton TouchButtonBackSmall;
 
@@ -209,3 +212,5 @@ void DrawPath() {
     }
 }
 #endif // ENABLE_PATH_INFO_PAGE
+#endif // _ROBOT_CAR_PATH_INFO_PAGE_HPP
+#pragma once
