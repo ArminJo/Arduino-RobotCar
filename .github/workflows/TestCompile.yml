@@ -19,7 +19,7 @@ jobs:
     name: Test compiling examples for UNO
     runs-on: ubuntu-latest
     env:
-      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl
+      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,BlueDisplay,PlayRtttl
 #      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,BlueDisplay,PlayRtttl,SparkFun VL53L1X 4m Laser Distance Sensor
 
     strategy:
@@ -75,12 +75,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: Checkout new BlueDisplay library
-        uses: actions/checkout@v2
-        with:
-          repository: ArminJo/Arduino-BlueDisplay
-          ref: master
-          path: CustomLibrary_BD # must contain string "Custom"
+#      - name: Checkout new BlueDisplay library
+#        uses: actions/checkout@v2
+#        with:
+#          repository: ArminJo/Arduino-BlueDisplay
+#          ref: master
+#          path: CustomLibrary_BD # must contain string "Custom"
 
 # Currently included in source directory
 #      - name: Checkout new PWMMotorControl library

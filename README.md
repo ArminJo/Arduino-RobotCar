@@ -13,19 +13,19 @@
 **Just overwrite the function doUserCollisionDetection() to test your own skill**.
 You may also overwrite the function fillAndShowForwardDistancesInfo(), if you use your own scanning method.
 
-This example uses the **[PWMMotorControl library](https://github.com/ArminJo/PWMMotorControl)** to control the motors.
+This example requires the **[PWMMotorControl library](https://github.com/ArminJo/PWMMotorControl)** to control the motors,
+the **[BlueDisplay library](https://github.com/ArminJo/BlueDisplay)** for Smartphone control and **[PlayRtttl library](https://github.com/ArminJo/PlayRtttl)** for the melody feature.
 
 # Pictures
-2 wheel car with encoders, 2 Li-ion batteries, Adafruit Motor Shield V2, Bluetooth connection, and servo mounted head down
-![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/2WheelDriveCar.jpg)
-4 wheel car, like 2 WD car before, but with servo mounted head up.
-![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/4WheelDriveCar.jpg)
-Encoder fork sensor
-![Encoder fork sensor](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ForkSensor.jpg)
-Servo mounted head down
-![Servo mounting](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ServoAtTopBack.jpg)
-VIN sensing
-![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/SensingVIn.jpg)
+| 4WD car with IR receiver and Bluetooth module and 4 AA rechargeable batteries. | Instructable |
+|-|-|
+| ![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/4WDInstructable.jpg) | [![Instructable](https://github.com/ArminJo/Arduino-OpenWindowAlarm/blob/master/pictures/instructables-logo-v2.png)](https://www.instructables.com/Arduino-4WD-Car-Assembly-and-Code-With-Optional-In/) |
+| 4 wheel car, like 2 WD car before, but with servo mounted head up. | 2 wheel car with encoders, 2 Li-ion batteries, Adafruit Motor Shield V2, Bluetooth connection, and servo mounted head down.  |
+| ![4 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/4WheelDriveCar.jpg) | ![2 wheel car](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/2WheelDriveCar.jpg)  |
+| Encoder fork sensor | Servo mounted head down |
+| ![Encoder fork sensor](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ForkSensor.jpg) | ![Servo mounting](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/ServoAtTopBack.jpg) |
+| VIN sensing |   |
+| ![VIN sensing](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/SensingVIn.jpg) |   |
 
 # SCREENSHOTS
 | Start page | Test page |
@@ -53,7 +53,7 @@ Modify them by enabling / disabling them, or change the values if applicable.
 
 Compile options for the used **PWMMotorControl library** like `USE_ENCODER_MOTOR_CONTROL` are described [here](https://github.com/ArminJo/PWMMotorControl#compile-options--macros-for-this-library).
 
-| Option | Default | Description |
+| Name | Default value | Description |
 |-|-|-|
 | `CAR_HAS_VIN_VOLTAGE_DIVIDER` | undefined | VIN/11 at A2, e.g. 1MOhm to VIN, 100kOhm to ground. Required to show and monitor (for undervoltage) VIN voltage. |
 | `VIN_VOLTAGE_CORRECTION` | undefined or 0.8 for UNO | Voltage to be subtracted from VIN voltage for voltage monitoring. E.g. if there is a series diode between Li-ion and VIN as on the UNO boards, set it to 0.8. |
