@@ -33,10 +33,11 @@ the **[BlueDisplay library](https://github.com/ArminJo/BlueDisplay)** for Smartp
 | ![Start page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/HomePage.png) | ![Test page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/TestPage.png) |
 
 Automatic control page with detected wall at right
-![Automatic control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/AutoDrivePage.png)
-- Green bars are distances above 1 meter or above double distance of one ride per scan whichever is less.
-- Red bars are distanced below the distance of one ride per scan -> collision during next "scan and ride" cycle if obstacle is ahead.
-- Orange bars are the values between the 2 thresholds.
+![Automatic control page](https://github.com/ArminJo/Arduino-RobotCar/blob/master/pictures/AutoDrivePageWallDetected.jpg)
+- Cyan bars are distances above 1 meter.
+- Green bars are distances above double distance of one ride per scan (default 40 cm).
+- Red bars are distanced below the distance of one ride per scan (default 20 cm) -> collision during next "scan and ride" cycle if obstacle is ahead.
+- Yellow bars are the values between the 2 thresholds (default 20 cm to 40 cm).
 - The tiny white bars are the distances computed by the doWallDetection() function. They overlay the green (assumed timeout) values.
 - The tiny black bar is the rotation chosen by doCollisionDetection() function.
 
