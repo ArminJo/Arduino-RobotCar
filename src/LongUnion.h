@@ -21,12 +21,11 @@
  *
  */
 
-#ifndef _LONG_UNION_H
-#define _LONG_UNION_H
-
 #include <Arduino.h>
 #include <stdint.h>
 
+#ifndef _WORD_UNION_H
+#define _WORD_UNION_H
 /**
  * Union to specify parts / manifestations of a 16 bit Word without casts and shifts.
  * It also supports the compiler generating small code.
@@ -46,7 +45,10 @@ union WordUnion {
     int16_t Word;
     uint8_t *BytePointer;
 };
+#endif
 
+#ifndef _LONG_UNION_H
+#define _LONG_UNION_H
 /**
  * Union to specify parts / manifestations of a 32 bit Long without casts and shifts.
  * It also supports the compiler generating small code.
