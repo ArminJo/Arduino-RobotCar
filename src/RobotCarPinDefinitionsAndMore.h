@@ -98,7 +98,7 @@
 #endif // defined(USE_ADAFRUIT_MOTOR_SHIELD)
 
 //Servo pins
-#define PIN_DISTANCE_SERVO         10 // Servo Nr. 2 on Adafruit Motor Shield - can be controlled by LightweightServo library
+#define PIN_DISTANCE_SERVO         10 // Servo Nr. 2 on Adafruit Motor Shield - if pin 10 can be controlled by Distance.hpp and LightweightServo library
 #if defined(CAR_HAS_PAN_SERVO)
 #define PIN_PAN_SERVO              11
 #endif
@@ -132,30 +132,40 @@
 #define FRONT_LEFT_MOTOR_FORWARD_PIN   11 // AIN1
 #define FRONT_LEFT_MOTOR_BACKWARD_PIN  12 // AIN2
 
-#define PIN_TRIGGER_OUT                13 // can we see the trigger signal?
-#define PIN_ECHO_IN                    A0
+#if defined(CAR_HAS_PAN_SERVO)
+#undef CAR_HAS_PAN_SERVO                  // pin 11 is already in use
+#endif
+#if defined(CAR_HAS_TILT_SERVO)
+#undef CAR_HAS_TILT_SERVO                // pin 12 is already in use
+#endif
 
-#define IR_INPUT_PIN                   A1
+#define PIN_TRIGGER_OUT                A0 // can we see the trigger signal?
+#define PIN_ECHO_IN                    A1
 
-#define PIN_DISTANCE_SERVO             A2
+#define IR_INPUT_PIN                   A2
+
+#define PIN_DISTANCE_SERVO             13
+#if defined(CAR_HAS_LASER)
+#undef CAR_HAS_LASER                      // pin 13 is used by distance servo
+#endif
 
 // Temporarily definition for convenience
-#define CAR_IS_NANO_BASED           // We have an Arduino NANO instead of an UNO. This implies VIN_VOLTAGE_CORRECTION.
+#define CAR_IS_NANO_BASED               // We have an Arduino NANO instead of an UNO resulting in a different pin layout.
 #endif // defined(CAR_HAS_4_MECANUM_WHEELS)
 
 #if defined(CAR_IS_NANO_BASED)
 #define PIN_BUZZER                     A3
 #define PIN_IR_DISTANCE_SENSOR         A6 // Sharp IR distance sensor
 
-#  if defined(CAR_HAS_VIN_VOLTAGE_DIVIDER)
 // Pin A0 for VCC monitoring - ADC channel 7
 // Assume an attached resistor network of 100k / 10k from VCC to ground (divider by 11)
-#define VIN_11TH_IN_CHANNEL             7 // = A7
-#define PIN_VIN_11TH_IN                A7
-#  endif
+#define VIN_ATTENUATED_INPUT_CHANNEL    7 // = A7
+#define PIN_VIN_ATTENUATED_INPUT       A7
+
 #  if defined(CAR_HAS_CAMERA)
 #define PIN_CAMERA_SUPPLY_CONTROL      A2
 #  endif
+
 #elif defined(CAR_IS_ESP32_CAM_BASED)
 #define RIGHT_MOTOR_FORWARD_PIN    17 // IN4 <- Label on the L298N board
 #define RIGHT_MOTOR_BACKWARD_PIN   18 // IN3
@@ -179,7 +189,7 @@
 #  if !defined(LED_BUILTIN) && !defined(CAR_IS_ESP32_CAM_BASED)
 #define LED_BUILTIN PB1
 #  endif
-#define TONE_LEDC_CHANNEL        1  // Using channel 1 makes tone() independent of receiving timer -> No need to stop receiving timer.
+#define TONE_LEDC_CHANNEL           1  // Using channel 1 makes tone() independent of receiving timer -> No need to stop receiving timer.
 void tone(uint8_t _pin, unsigned int frequency){
     ledcAttachPin(_pin, TONE_LEDC_CHANNEL);
     ledcWriteTone(TONE_LEDC_CHANNEL, frequency);
@@ -195,12 +205,11 @@ void noTone(uint8_t _pin){
 }
 #else // NANO_BASED
 // UNO based
-#  if defined(CAR_HAS_VIN_VOLTAGE_DIVIDER)
 // Pin A0 for VCC monitoring - ADC channel 2
 // Assume an attached resistor network of 100k / 10k from VCC to ground (divider by 11)
-#define VIN_11TH_IN_CHANNEL         2 // = A2
-#define PIN_VIN_11TH_IN            A2
-#  endif
+#define VIN_ATTENUATED_INPUT_CHANNEL    2 // = A2
+#define PIN_VIN_ATTENUATED_INPUT       A2
+
 #define PIN_BUZZER                     12
 #define PIN_IR_DISTANCE_SENSOR         A3 // Sharp IR distance sensor
 #endif // CAR_IS_NANO_BASED

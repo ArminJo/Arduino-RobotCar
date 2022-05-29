@@ -33,8 +33,6 @@
 
 #include <Arduino.h>
 
-//#define DEBUG // Only for development
-
 //#define USE_ACCELERATOR_Y_FOR_SPEED           // The y axis of the GY-521 MPU6050 breakout board points forward / backward, i.e. connectors are at the right.
 //#define USE_NEGATIVE_ACCELERATION_FOR_SPEED   // The x axis of the GY-521 MPU6050 breakout board points backwards.
 //#define PRINT_MOVEMENT_DETECTION_MAX_VALUES   // The maximum delta values of the 4 values used for motion detection are printed, when offset recalculation is done.
@@ -49,18 +47,25 @@
 #include "Wire.h"
 #endif // defined(USE_SOFT_I2C_MASTER)
 
+//#define WARN    // Information that the program may encounter problems, like small Heap/Stack area.
+#include "DebugLevel.h" // Include to propagate debug levels
+
+#if defined(DEBUG)
+#define LOCAL_DEBUG
+#else
+//#define LOCAL_DEBUG // This enables debug output only for this file - only for development
+#endif
+
 #define FIFO_CHUNK_SIZE_FOR_CAR_DATA       ((NUMBER_OF_ACCEL_VALUES + 1) * 2) // 3 accel and only z gyro requested
 
-//#define WARN    // Information that the program may encounter problems, like small Heap/Stack area.
 //#define AUTO_OFFSET_DEBUG // Show auto offset values as dummy values for the plotter output
-#include "DebugLevel.h" // Include to propagate debug levels
 
 /********************************************************************************
  * MPU6050 related functions
  ********************************************************************************/
 /*
  * Sets AcceleratorForward, Speed, Distance, GyroscopePan and TurnAngle
- * Sets AcceleratorForwardLowPass8 and AcceleratorForwardLowPass4
+ * Sets AcceleratorForwardLowPass8, AcceleratorForwardLowPass6 and AcceleratorForwardLowPass4
  * Read raw 14 vales. Requires 500 us.
  */
 void IMUCarData::readCarDataFromMPU6050() {
@@ -102,7 +107,7 @@ void IMUCarData::readCarDataFromMPU6050() {
 #endif
 
     AcceleratorForwardLowPass8.Long += ((((int32_t) AcceleratorForward.Word) << 16) - AcceleratorForwardLowPass8.Long) >> 8; // Fixed point 2.0 us
-    AcceleratorForwardLowPass4.Long += ((((int32_t) AcceleratorForward.Word) << 16) - AcceleratorForwardLowPass4.Long) >> 4; // Fixed point 2.0 us
+    AcceleratorForwardLowPass6.Long += ((((int32_t) AcceleratorForward.Word) << 16) - AcceleratorForwardLowPass6.Long) >> 6; // Fixed point 2.0 us
     Speed.Long += AcceleratorForward.Word;
     Distance.Long += Speed.Long >> 8;
 
@@ -151,7 +156,7 @@ void IMUCarData::delayAndReadIMUCarDataFromMPU6050FIFO(unsigned long aMillisDela
  * Sets LastFifoCheckMillis
  * Sets AcceleratorForward, Speed, Distance, GyroscopePan and TurnAngle
  * AcceleratorForward and GyroscopePan are the average of all values from current FIFO content
- * Sets AcceleratorForwardLowPass8 and AcceleratorForwardLowPass4
+ * Sets AcceleratorForwardLowPass8, AcceleratorForwardLowPass6 and AcceleratorForwardLowPass4
  * The first NUMBER_OF_OFFSET_CALIBRATION_SAMPLES values are taken to compute AcceleratorForwardOffset and GyroscopePanOffset, afterwards OffsetsHaveJustChanged is set to true
  * @return true, if data might have changed
  */
@@ -164,7 +169,7 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
      * Read FIFO count only once at start of the function
      */
     uint16_t tFifoCount = MPU6050ReadWordSwapped(MPU6050_RA_FIFO_COUNTH);  // multiple of 8 -> 160 for 20 ms
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
     if (!sOnlyPlotterOutput) {
 #  endif
@@ -233,8 +238,8 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
                     tAcceleratorForward += tAcceleratorValue.Word;
                     AcceleratorForwardLowPass8.Long +=
                             ((((int32_t) tAcceleratorValue.Word) << 16) - AcceleratorForwardLowPass8.Long) >> 8; // Fixed point 2.0 us
-                    AcceleratorForwardLowPass4.Long +=
-                            ((((int32_t) tAcceleratorValue.Word) << 16) - AcceleratorForwardLowPass4.Long) >> 4; // Fixed point 2.0 us
+                    AcceleratorForwardLowPass6.Long +=
+                            ((((int32_t) tAcceleratorValue.Word) << 16) - AcceleratorForwardLowPass6.Long) >> 6; // Fixed point 2.0 us
 
                     Speed.Long += tAcceleratorValue.Word;
                     Distance.Long += Speed.Long >> 8;
@@ -277,7 +282,7 @@ bool IMUCarData::readCarDataFromMPU6050Fifo() {
             GyroscopePanOffset = TurnAngle.Long / CountOfFifoChunksForOffset;
             resetAllIMUCarOffsetAdjustedValues(); // reset all offset adjusted values to zero
             resetForOffsetRecalculation(); // must be after resetAllIMUCarOffsetAdjustedValues()!
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
             if (!sOnlyPlotterOutput) {
 #  endif
@@ -323,7 +328,7 @@ void IMUCarData::doOffsetRecalculation() {
             /*
              * Movement detected, reset recalculation
              */
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
             if (!sOnlyPlotterOutput) {
 #  endif
@@ -360,7 +365,7 @@ void IMUCarData::doOffsetRecalculation() {
                 }
 #  endif
 #endif // defined(PRINT_MOVEMENT_DETECTION_MAX_VALUES)
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
                 if (!sOnlyPlotterOutput) {
 #  endif
@@ -372,7 +377,7 @@ void IMUCarData::doOffsetRecalculation() {
                 if (abs(Speed.Long - SpeedSnapshotForOffsetRecalculation) > CountOfFifoChunksForOffset) {
                     // Accelerator difference is higher than 1 per sample, so adjust accelerator offset
                     AcceleratorForwardOffset += (Speed.Long - SpeedSnapshotForOffsetRecalculation) / CountOfFifoChunksForOffset;
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
                     if (!sOnlyPlotterOutput) {
 #  endif
@@ -383,7 +388,7 @@ void IMUCarData::doOffsetRecalculation() {
 #  endif
 #endif
                     OffsetsJustHaveChanged = true;
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
                     // just to show in Arduino Plotter - 5 for each accelerator offset increment
                     AcceleratorForward.Word = 64 * 5 * ((Speed.Long - SpeedSnapshotForOffsetRecalculation) / CountOfFifoChunksForOffset);
 #else
@@ -398,7 +403,7 @@ void IMUCarData::doOffsetRecalculation() {
                 if (abs(TurnAngle.Long - TurnSnapshotForOffsetRecalculation) > CountOfFifoChunksForOffset) {
                     // Gyroscope difference is higher than 1 per sample, so adjust gyroscope offset and reset gyroscope to last value
                     GyroscopePanOffset += (TurnAngle.Long - TurnSnapshotForOffsetRecalculation) / CountOfFifoChunksForOffset;
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
                     if (!sOnlyPlotterOutput) {
 #  endif
@@ -409,7 +414,7 @@ void IMUCarData::doOffsetRecalculation() {
 #  endif
 #endif
                     OffsetsJustHaveChanged = true;
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
                     // just to show in Arduino Plotter - 5 for each gyroscope offset increment
                     GyroscopePan.Word = 5 * 256 * ((TurnAngle.Long - TurnSnapshotForOffsetRecalculation) / CountOfFifoChunksForOffset);
 #else
@@ -420,7 +425,7 @@ void IMUCarData::doOffsetRecalculation() {
                     TurnAngle.Long = TurnSnapshotForOffsetRecalculation;
                 }
                 resetForOffsetRecalculation();
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
 #  if defined(DEBUG_CHECK_PLOTTER_FLAG)
                 if (!sOnlyPlotterOutput) {
 #  endif
@@ -516,7 +521,7 @@ void IMUCarData::resetForOffsetRecalculation() {
 void IMUCarData::resetAllIMUCarOffsetAdjustedValues() {
     AcceleratorForward.Word = 0;
     AcceleratorForwardLowPass8.ULong = 0;
-    AcceleratorForwardLowPass4.ULong = 0;
+    AcceleratorForwardLowPass6.ULong = 0;
     GyroscopePanLowPass8.ULong = 0;
     Speed.ULong = 0;
     Distance.Long = 0;
@@ -631,8 +636,9 @@ int8_t IMUCarData::getAcceleratorForwardLowPass8() {
     return AcceleratorForwardLowPass8.Word.HighWord >> 6; // 256 per g
 }
 
-int8_t IMUCarData::getAcceleratorForwardLowPass4() {
-    return AcceleratorForwardLowPass4.Word.HighWord >> 6; // 256 per g
+int8_t IMUCarData::getAcceleratorForwardLowPass6() {
+//    return AcceleratorForwardLowPass8.Byte.HighByte;
+    return AcceleratorForwardLowPass6.Word.HighWord >> 6; // 256 per g
 }
 
 // shift 14 -> 1 (0.981) cm/s , 12 -> 2.5 mm/s, 8 -> 0.15328 mm/s
@@ -714,19 +720,25 @@ bool IMUCarData::printIMUCarFIFODataPeriodically(Print *aSerial, uint16_t aPerio
  * Space but NO println() at the end, to enable additional information to be printed
  */
 void IMUCarData::printIMUCarDataCaption(Print *aSerial) {
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
     aSerial->print(F("AccelForward[4mg/LSB] AccelForwardLP8 Speed[cm/s] Distance[cm] GyroZ[2dps/LSB] AngleZ[0.5d/LSB] ")); // +/-250 | 500 degree per second for 16 bit full range
 #else
 //    aSerial->print(F("AccelForward[4mg/LSB] AccelForwardAverage AccelForwardLP8 Speed[cm/s] Distance[cm] AngleZ[0.5d/LSB] ")); // +/-250 | 500 degree per second for 16 bit full range
 //    aSerial->print(F("AccelAvg.[4mg/LSB] AccelLP8 Speed[cm/s] Distance[cm] AngleZ[0.5d/LSB] ")); // +/-250 | 500 degree per second for 16 bit full range
-    aSerial->print(F("AccelForward[4mg/LSB] Speed[cm/s] Distance[cm] AngleZ[0.5d/LSB] ")); // +/-250 | 500 degree per second for 16 bit full range
+    aSerial->print(F("Accel[4cm/s^2] AccelAvg6 Speed[cm/s] Distance[cm] AngleZ[0.5d] ")); // +/-250 | 500 degree per second for 16 bit full range
 #endif
 }
 
+/*
+ * Do not end with newline, to allow other data to be appended
+ */
 void IMUCarData::printIMUCarData(Print *aSerial) {
     aSerial->print(getAcceleratorForward4MilliG());
     aSerial->print(" ");
-#if defined(DEBUG)
+    aSerial->print(getAcceleratorForwardLowPass6());
+    aSerial->print(" ");
+
+#if defined(LOCAL_DEBUG)
 //    aSerial->print(getAcceleratorForwardLowPass4());
 //    aSerial->print(" ");
     aSerial->print(getAcceleratorForwardLowPass8());
@@ -736,11 +748,11 @@ void IMUCarData::printIMUCarData(Print *aSerial) {
     aSerial->print(" ");
     aSerial->print(getDistanceCm());
     aSerial->print(" ");
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
     aSerial->print(getGyroscopePan2DegreePerSecond());
     aSerial->print(" ");
 #endif
-    aSerial->println(getTurnAngleHalfDegree());
+    aSerial->print(getTurnAngleHalfDegree());
 }
 
 unsigned int IMUCarData::getMPU6050SampleRate() {
@@ -832,5 +844,7 @@ uint16_t IMUCarData::MPU6050ReadWord(uint8_t aRegisterNumber) {
     return tWord.UWord;
 #endif
 }
+#if defined(LOCAL_DEBUG)
+#undef LOCAL_DEBUG
+#endif
 #endif // _IMU_CAR_DATA_HPP
-#pragma once

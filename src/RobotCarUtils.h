@@ -22,9 +22,15 @@
 
 #include <Arduino.h>
 
+bool isVINVoltageDividerAttached(uint8_t aPin);
 void printConfigInfo();
 void initRobotCarPWMMotorControl();
 unsigned int getDistanceAndPlayTone();
+
+// for MONITOR_VIN_VOLTAGE
+extern uint16_t sVINRawSum;   // Sum of NUMBER_OF_VIN_SAMPLES raw readings of ADC
+extern float sVINVoltage;
+void readVINVoltage();
 void checkVinPeriodicallyAndPrintIfChanged();
 
 #endif // _ROBOT_CAR_UTILS_H

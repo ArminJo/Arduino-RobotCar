@@ -39,18 +39,25 @@
  * For a complete list of available configurations see RobotCarConfigurations.h
  * https://github.com/ArminJo/Arduino-RobotCar/blob/master/src/RobotCarConfigurations.h
  */
-//#define TBB6612_BASIC_4WD_4AA_CONFIGURATION       // China set with TB6612 mosfet bridge + 4AA.
-//#define TBB6612_FULL_4WD_4AA_CONFIGURATION        // China set with TB6612 mosfet bridge + 4AA + VIN voltage divider.
-//#define TBB6612_BASIC_4WD_2LI_ION_CONFIGURATION   // China set with TB6612 mosfet bridge + 2 Li-ion.
-//#define TBB6612_FULL_4WD_2LI_ION_CONFIGURATION    // China set with TB6612 mosfet bridge + 2 Li-ion + VIN voltage divider.
-//#define L298_BASIC_2WD_4AA_CONFIGURATION          // Default. Basic = Lafvin 2WD model using L298 bridge. Uno board with series diode for VIN + 4 AA batteries.
-//#define L298_BASIC_4WD_4AA_CONFIGURATION          // China set with L298 + 4AA.
-//#define L298_BASIC_2WD_2LI_ION_CONFIGURATION      // Basic = Lafvin 2WD model using L298 bridge. Uno board with series diode for VIN + 2 Li-ion.
-//#define L298_VIN_IR_DISTANCE_CONFIGURATION        // L298_Basic_2WD + VIN voltage divider + IR distance
-//#define L298_VIN_IR_IMU_CONFIGURATION             // L298_Basic_2WD + VIN voltage divider + IR distance + MPU6050
+//#define TBB6612_4WD_4AA_BASIC_CONFIGURATION       // China set with TB6612 mosfet bridge + 4AA.
+//#define TBB6612_4WD_4AA_VIN_CONFIGURATION         // China set with TB6612 mosfet bridge + 4AA + VIN voltage divider.
+//#define TBB6612_4WD_4AA_FULL_CONFIGURATION        // China set with TB6612 mosfet bridge + 4AA + VIN voltage divider + MPU6050.
+//#define TBB6612_4WD_2LI_ION_BASIC_CONFIGURATION   // China set with TB6612 mosfet bridge + 2 Li-ion.
+//#define TBB6612_4WD_2LI_ION_FULL_CONFIGURATION    // China set with TB6612 mosfet bridge + 2 Li-ion + VIN voltage divider + MPU6050.
+//#define L298_2WD_4AA_BASIC_CONFIGURATION          // Default. Basic = Lafvin 2WD model using L298 bridge. Uno board with series diode for VIN + 4 AA batteries.
+//#define L298_4WD_4AA_BASIC_CONFIGURATION          // China set with L298 + 4AA.
+//#define L298_2WD_2LI_ION_BASIC_CONFIGURATION      // Basic = Lafvin 2WD model using L298 bridge. Uno board with series diode for VIN + 2 Li-ion.
+//#define L298_2WD_VIN_IR_DISTANCE_CONFIGURATION    // L298_2WD_2LI_ION_BASIC + VIN voltage divider + IR distance
+//#define L298_2WD_VIN_IR_IMU_CONFIGURATION         // L298_2WD_2LI_ION_BASIC + VIN voltage divider + IR distance + MPU6050
 #define DO_NOT_SUPPORT_RAMP             // Ramps are anyway not used if drive speed voltage (default 2.0 V) is below 2.3 V. Saves 378 bytes program memory.
 #define CAR_HAS_US_DISTANCE_SENSOR      // A HC-SR04 ultrasonic distance sensor is mounted (default for most China smart cars)
 #define CAR_HAS_DISTANCE_SERVO          // Distance sensor is mounted on a pan servo (default for most China smart cars)
+/*
+ * For moving exact distances and turns you may modify this values according to your actual car configuration
+ */
+//#define DEFAULT_CIRCUMFERENCE_MILLIMETER     220  // The circumference of your wheel in millimeter
+#define USE_SOFT_I2C_MASTER // Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
+#define CAR_HAS_4_MECANUM_WHEELS
 
 #include "RobotCarConfigurations.h" // sets e.g. USE_ENCODER_MOTOR_CONTROL, USE_ADAFRUIT_MOTOR_SHIELD
 #include "RobotCarPinDefinitionsAndMore.h"
@@ -58,6 +65,8 @@
 /*
  * Enable functionality of this program
  */
+//#define TEST_TIMING
+//#include "digitalWriteFast.h"
 #define ENABLE_RTTTL_FOR_CAR        // Plays melody after initial timeout has reached and enables the "Play Melody" BD-button
 //#define USE_MOTOR_FOR_MELODY        // Generates the tone by using motor coils as tone generator
 //#define ENABLE_PATH_INFO_PAGE       // Saves program memory
@@ -70,9 +79,17 @@
 #if defined(CAR_HAS_MPU6050_IMU)
 //#define USE_MPU6050_IMU
 #endif
+#if defined(CAR_HAS_DISTANCE_SENSOR) && defined(CAR_HAS_DISTANCE_SERVO)
+#define ENABLE_AUTONOMOUS_DRIVE
+#endif
 #if defined(CAR_HAS_VIN_VOLTAGE_DIVIDER)
 #define MONITOR_VIN_VOLTAGE         // Enable if by default, if available
 #define PRINT_VOLTAGE_PERIOD_MILLIS 2000
+#endif
+
+#if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT) && (defined(MONITOR_VIN_VOLTAGE) || defined(CAR_HAS_IR_DISTANCE_SENSOR))
+// Must be before #include "BlueDisplay.hpp"
+#define ADC_INTERNAL_REFERENCE_MILLIVOLT 1100L    // Value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
 
 /*
@@ -80,39 +97,31 @@
  */
 //#define BLUETOOTH_BAUD_RATE BAUD_115200  // Activate this, if you have reprogrammed the HC05 module for 115200, otherwise 9600 is used as baud rate
 #define DO_NOT_NEED_BASIC_TOUCH_EVENTS // Disables basic touch events like down, move and up. Saves 620 bytes program memory and 36 bytes RAM
-#include "BlueDisplay.hpp" // include source of library
-#include "RobotCarBlueDisplay.h"
 
-#define USE_SOFT_I2C_MASTER // Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
-#include "CarPWMMotorControl.hpp" // include source of library
+#define SUPPRESS_HPP_WARNING        // Suppress warnings we get because of helper includes for eclipse indexer
+#include "CarPWMMotorControl.hpp"   // include source of library
+#include "RobotCarUtils.hpp"        // include source of library
+#include "BlueDisplay.hpp"          // include source of library
 
 #if defined(USE_MPU6050_IMU)
-#include "IMUCarData.hpp"       // include source of library
+#include "IMUCarData.hpp"           // include source of library
 #endif
 #include "RobotCarGui.hpp"
 
 #if defined(CAR_HAS_DISTANCE_SENSOR)
-#include "Distance.h"   // This helps the eclipse indexer
-#include "Distance.hpp" // requires definitions from RobotCarGui.h
+#include "Distance.hpp"             // requires definitions from RobotCarGui.h
 #endif
 
 #if defined(ENABLE_RTTTL_FOR_CAR)
-#define USE_NO_RTX_EXTENSIONS // Disables RTX format definitions `'s'` (style) and `'l'` (loop). Saves up to 332 bytes program memory
+#define USE_NO_RTX_EXTENSIONS       // Disables RTX format definitions `'s'` (style) and `'l'` (loop). Saves up to 332 bytes program memory
 #include <PlayRtttl.hpp>
 #endif
-
-#include "RobotCarUtils.hpp" // for print
 
 /*
  * Timeouts for demo mode and inactivity remainder
  */
 #define TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS 240000L // move Servo after 4 Minutes of inactivity
 #define TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS 10000 // Start demo mode 10 seconds after boot up
-
-#if defined(MONITOR_VIN_VOLTAGE)
-#include "ADCUtils.h"
-float sVINVoltage;
-#endif
 
 #if defined(ENABLE_RTTTL_FOR_CAR)
 bool sPlayMelody = false;
@@ -227,13 +236,10 @@ void setup() {
 #endif
 #if defined(CAR_HAS_DISTANCE_SENSOR)
     initDistance();
-#  if defined(ENABLE_RTTTL_FOR_CAR)
-    randomSeed(getUSDistance(10000));
-#  endif
 #endif
 
 #if defined(MONITOR_VIN_VOLTAGE)
-    readVINVoltage();
+    readVINVoltage(); // The value might not correct, but it sets the channel and reference for VIN initially
     randomSeed(sVINVoltage * 100);
 #endif
 
@@ -246,19 +252,25 @@ void setup() {
     }
 }
 
+/*
+ * 35us per loop for idle HomePage, TestPage and SensorDrivePage
+ * 140 us per loop for idle AutoDrivePage
+ */
 void loop() {
-
+#if defined(TEST_TIMING)
+    digitalToggleFast(PIN_BUZZER);
+#endif
     /*
      * Required, if we use rotation, ramps and fixed distance driving
      */
-    RobotCarPWMMotorControl.updateMotors();
+    RobotCarPWMMotorControl.updateMotors(); // 2 us, if driving
 
     /*
      * check for user input and update display output
      */
     loopGUI();
 
-#if defined(CAR_HAS_DISTANCE_SENSOR) && defined(CAR_HAS_DISTANCE_SERVO)
+#if defined(ENABLE_AUTONOMOUS_DRIVE)
     /*
      * Handle autonomous driving
      */
@@ -277,12 +289,12 @@ void loop() {
 #endif
 
     /*
-     * check if timeout, no Bluetooth connection and connected to LIPO battery
+     * check if timeout, no Bluetooth connection and not connected to USB. For
      */
     if ((!BlueDisplay1.isConnectionEstablished()) && (millis() < (TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS + 1000))
             && (millis() > TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS)
-#if defined(MONITOR_VIN_VOLTAGE)
-            && (sVINVoltage > VOLTAGE_USB_THRESHOLD)
+#if defined(MONITOR_VIN_VOLTAGE) && (FULL_BRIDGE_INPUT_MILLIVOLT > VOLTAGE_USB_THRESHOLD_MILLIVOLT)
+            && (sVINVoltage > VOLTAGE_USB_THRESHOLD_MILLIVOLT)
 #endif
             ) {
 
@@ -298,7 +310,7 @@ void loop() {
         // check again, maybe we are connected now
         if (!BlueDisplay1.isConnectionEstablished()) {
             // Set right page for reconnect
-#if defined(CAR_HAS_DISTANCE_SENSOR) && defined(CAR_HAS_DISTANCE_SERVO)
+#if defined(ENABLE_AUTONOMOUS_DRIVE)
             GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
             startStopAutomomousDrive(true, MODE_FOLLOWER);
 #else
@@ -314,32 +326,15 @@ void loop() {
         sMillisOfLastReceivedBDEvent = millis() - (TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
 #if defined(CAR_HAS_DISTANCE_SERVO)
         fillAndShowForwardDistancesInfo(true, true);
-#  if defined(USE_STANDARD_SERVO_LIBRARY)
-        DistanceServo.write(90); // set servo back to normal
-#  else
+#  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
         write10(90);
+#  else
+        DistanceServo.write(90); // set servo back to normal
 #  endif
 #endif
 
     }
 }
-
-#if defined(MONITOR_VIN_VOLTAGE)
-void readVINVoltage() {
-    uint16_t tVIN = waitAndReadADCChannelWithReferenceAndRestoreADMUX(VIN_11TH_IN_CHANNEL, INTERNAL);
-
-//    BlueDisplay1.debug("VIN Raw=", tVIN);
-
-// assume resistor network of 1MOhm / 100kOhm (divider by 11)
-// tVIN * 0,01182795
-#  if defined(VIN_VOLTAGE_CORRECTION)
-    // we have a diode (requires 0.8 volt) between LIPO and VIN
-    sVINVoltage = (tVIN * ((11.0 * 1.1) / 1023)) + VIN_VOLTAGE_CORRECTION;
-#  else
-    sVINVoltage = tVIN * ((11.0 * 1.1) / 1023);
-#  endif
-}
-#endif // MONITOR_VIN_VOLTAGE
 
 #if defined(ENABLE_RTTTL_FOR_CAR)
 #include "digitalWriteFast.h"
@@ -438,10 +433,10 @@ void resetServos() {
 
 void initServos() {
 #if defined(CAR_HAS_DISTANCE_SERVO)
-#  if defined(USE_STANDARD_SERVO_LIBRARY)
-    DistanceServo.attach(PIN_DISTANCE_SERVO); // Use standard servo library, because we have more servos and cannot use LightweightServo library
-#  else
+#  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
     initLightweightServoPin10(); // Use LightweightServo library, because we have only one servo
+#  else
+    DistanceServo.attach(PIN_DISTANCE_SERVO); // Use standard servo library, because we have more servos and cannot use LightweightServo library
 #  endif
 #endif
 

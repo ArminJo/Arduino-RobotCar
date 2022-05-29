@@ -21,6 +21,8 @@
  *
  */
 
+#if !defined(_WORD_UNION_H) || !defined(_LONG_UNION_H)
+
 #include <Arduino.h>
 #include <stdint.h>
 
@@ -45,7 +47,7 @@ union WordUnion {
     int16_t Word;
     uint8_t *BytePointer;
 };
-#endif
+#endif // _WORD_UNION_H
 
 #ifndef _LONG_UNION_H
 #define _LONG_UNION_H
@@ -90,6 +92,6 @@ union LongUnion {
     uint32_t ULong;
     int32_t Long;
 };
-
 #endif // _LONG_UNION_H
-#pragma once
+
+#endif //  !defined(_WORD_UNION_H) || !defined(_LONG_UNION_H)
