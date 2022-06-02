@@ -128,7 +128,7 @@ unsigned int getDistanceAsCentimeterAndPlayTone(uint8_t aDistanceTimeoutCentimet
          */
         if (sDistanceFeedbackMode != DISTANCE_FEEDBACK_NO_TONE) {
             if (tCentimeter == DISTANCE_TIMEOUT_RESULT) {
-                noTone (PIN_BUZZER);
+                noTone(PIN_BUZZER);
             } else {
                 int tFrequency;
                 if (sDistanceFeedbackMode == DISTANCE_FEEDBACK_PENTATONIC) {
@@ -142,7 +142,7 @@ unsigned int getDistanceAsCentimeterAndPlayTone(uint8_t aDistanceTimeoutCentimet
                     tFrequency = NoteC5ToC7Pentatonic[tIndex]; // 523 to 2093 Hz for 0 to 100 cm
                 } else {
                     /*
-                     * Play feedback tone proportional to measured distance
+                     * DISTANCE_FEEDBACK_CONTINUOUSLY. Play feedback tone proportional to measured distance
                      */
 #if defined(FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) && defined(FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER)
                 if(tCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER){
@@ -169,7 +169,7 @@ unsigned int getDistanceAsCentimeterAndPlayTone(uint8_t aDistanceTimeoutCentimet
 void printDistanceIfChanged(Print *aSerial) {
     if (sDistanceJustChanged) {
         if (sEffectiveDistanceCentimeter == DISTANCE_TIMEOUT_RESULT) {
-            aSerial->print("Distance timeout");
+            aSerial->println("Distance timeout");
         } else {
             aSerial->print("Distance=");
             aSerial->print(sEffectiveDistanceCentimeter);
@@ -446,7 +446,7 @@ int scanForTarget(unsigned int aMaximumTargetDistance) {
     noTone(PIN_BUZZER); // suppress distance tone at scanning
 
     uint8_t tServoDegreeOfFoundTarget = 0;
-    uint8_t tCentimeter; // We have timeout at less than 255 cm
+    uint8_t tCentimeter; // We have set the timeout to less than 255 cm
     uint8_t tServoDegreeToScan;
     int tDeltaDegree;
     /*
@@ -596,7 +596,7 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
             /*
              * Emergency motor stop if index is forward and measured distance is less than distance driven during two scans
              */
-            RobotCarPWMMotorControl.stop();
+            RobotCar.stop();
         }
 
         if (sCurrentPage == PAGE_AUTOMATIC_CONTROL && BlueDisplay1.isConnectionEstablished()) {

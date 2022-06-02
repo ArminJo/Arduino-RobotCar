@@ -46,7 +46,7 @@
 #include "PWMDcMotor.h"
 
 #if defined(USE_ADAFRUIT_MOTOR_SHIELD)
-//#define USE_SOFT_I2C_MASTER // Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
+//#define USE_SOFT_I2C_MASTER       // Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
 #  if defined(USE_SOFT_I2C_MASTER)
 #include "SoftI2CMasterConfig.h"
 #include "SoftI2CMaster.h"
@@ -67,7 +67,7 @@
 #endif
 
 char sDirectionCharArray[3] = { 'S', 'F', 'B' };
-const char *sDirectionStringArray[3] = { "stop", "forward", "backward" };
+const char *sDirectionStringArray[4] = { "stop", "forward", "backward", "unknown" };
 
 // Flags e.g. for display update control
 #if defined(USE_MPU6050_IMU) || defined(USE_ENCODER_MOTOR_CONTROL)
@@ -290,10 +290,13 @@ uint16_t PWMDcMotor::getMotorVoltageMillivoltforPWMAndMillivolt(uint8_t aSpeedPW
 }
 
 float PWMDcMotor::getMotorVoltageforPWM(uint8_t aSpeedPWM, float aFullBridgeInputVoltage) {
-    return aSpeedPWM * ((aFullBridgeInputVoltage - FULL_BRIDGE_LOSS_MILLIVOLT) / (1000.0 * MAX_SPEED_PWM));
+    return aSpeedPWM * ((aFullBridgeInputVoltage - (FULL_BRIDGE_LOSS_MILLIVOLT / 1000.0)) / MAX_SPEED_PWM);
 }
 
 void PWMDcMotor::printDirectionString(Print *aSerial, uint8_t aDirection) {
+    if(aDirection > 3) {
+        aDirection = 3;
+    }
     aSerial->print(sDirectionStringArray[aDirection]);
 }
 
@@ -511,7 +514,7 @@ void PWMDcMotor::setDriveSpeedPWMFor2Volt(float aFullBridgeInputVoltage) {
 }
 
 /*
- * Can be used to get real value for DEFAULT_START_SPEED_PWM
+ * Can be used to get real value for DEFAULT_START_SPEED_PWM, etc. which are computed using the value FULL_BRIDGE_OUTPUT_MILLIVOLT
  */
 uint8_t PWMDcMotor::getVoltageAdjustedSpeedPWM(uint8_t aSpeedPWM, uint16_t aFullBridgeInputVoltageMillivolt) {
     uint16_t tSpeedPWM = ((uint32_t) (aSpeedPWM * FULL_BRIDGE_OUTPUT_MILLIVOLT))
@@ -522,8 +525,8 @@ uint8_t PWMDcMotor::getVoltageAdjustedSpeedPWM(uint8_t aSpeedPWM, uint16_t aFull
     return tSpeedPWM;
 }
 uint8_t PWMDcMotor::getVoltageAdjustedSpeedPWM(uint8_t aSpeedPWM, float aFullBridgeInputVoltage) {
-    uint16_t tSpeedPWM = ((uint32_t) (aSpeedPWM * FULL_BRIDGE_OUTPUT_MILLIVOLT))
-            / (1000.0 * (aFullBridgeInputVoltage - FULL_BRIDGE_LOSS_MILLIVOLT));
+    uint16_t tSpeedPWM = (aSpeedPWM * (FULL_BRIDGE_OUTPUT_MILLIVOLT / 1000.0))
+            / (aFullBridgeInputVoltage - (FULL_BRIDGE_LOSS_MILLIVOLT / 1000.0));
     if (tSpeedPWM > MAX_SPEED_PWM) {
         return MAX_SPEED_PWM;
     }
@@ -841,7 +844,7 @@ void PWMDcMotor::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned 
 
     if (isStopped()) {
         // add startup time
-        tComputedMillisOfMotorStopForDistance += DEFAULT_TIME_MILLIS_FOR_FIRST_CENTIMETER;
+        tComputedMillisOfMotorStopForDistance += DEFAULT_MILLIS_FOR_FIRST_CENTIMETER;
     }
     // after check of isStopped(), set PWM
     setSpeedPWMAndDirectionWithRamp(aRequestedSpeedPWM, aRequestedDirection);
@@ -947,8 +950,8 @@ void PWMDcMotor::printCompileOptions(Print *aSerial) {
     aSerial->print(F(", DEFAULT_DRIVE_SPEED_PWM="));
     aSerial->println(DEFAULT_DRIVE_SPEED_PWM);
 
-    aSerial->print(F("DEFAULT_TIME_MILLIS_FOR_FIRST_CENTIMETER="));
-    aSerial->println(DEFAULT_TIME_MILLIS_FOR_FIRST_CENTIMETER);
+    aSerial->print(F("DEFAULT_MILLIS_FOR_FIRST_CENTIMETER="));
+    aSerial->println(DEFAULT_MILLIS_FOR_FIRST_CENTIMETER);
 
     aSerial->print(F("DEFAULT_MILLIS_PER_MILLIMETER="));
     aSerial->println(DEFAULT_MILLIS_PER_CENTIMETER);

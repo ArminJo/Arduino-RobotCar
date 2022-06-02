@@ -127,20 +127,22 @@ public:
      */
     void setSpeedPWMAndDirectionAndDelay(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection, unsigned long aDelay);
 
-    void moveStar(int aRequestedSpeedPWM, int aDelay);
-    void moveFullStar(int aRequestedSpeedPWM, int aDelay);
-    void moveSqare(int aRequestedSpeedPWM, int aDelay);
-    void moveHexagon(int aRequestedSpeedPWM, int aDelay);
-    void moveTriangle(int aRequestedSpeedPWM, int aDelay);
-    void moveBigPlus(int aRequestedSpeedPWM, int aDelay);
-    void moveRhombus(int aRequestedSpeedPWM, int aDelay);
-    void moveTrapezium(int aRequestedSpeedPWM, int aDelay);
+    void moveStar(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveFullStar(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveSqare(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveHexagon(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveTriangle0(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveTriangle45(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveBigPlus(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveRhombus(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveTrapezium(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveTestDistances(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
 
     PWMDcMotor backRightCarMotor;
     PWMDcMotor backLeftCarMotor;
 };
 
-extern MecanumWheelCarPWMMotorControl RobotCarPWMMotorControl;
+extern MecanumWheelCarPWMMotorControl RobotCar;
 
 #endif // defined(CAR_HAS_4_MECANUM_WHEELS)
 #endif // _MECANUM_WHEEL_CAR_PWM_MOTOR_CONTROL_H

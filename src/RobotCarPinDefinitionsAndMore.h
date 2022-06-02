@@ -77,6 +77,8 @@
 #else
 #  if defined(CAR_HAS_US_DISTANCE_SENSOR) && defined(CAR_HAS_IR_DISTANCE_SENSOR)
 #define US_DISTANCE_SENSOR_ENABLE_PIN   3 // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
+#  else
+#define DISTANCE_TONE_FEEDBACK_ENABLE_PIN   3 // If this pin is connected to ground, enable distance feedback
 #  endif
 #endif // defined(USE_ENCODER_MOTOR_CONTROL)
 
@@ -136,7 +138,7 @@
 #undef CAR_HAS_PAN_SERVO                  // pin 11 is already in use
 #endif
 #if defined(CAR_HAS_TILT_SERVO)
-#undef CAR_HAS_TILT_SERVO                // pin 12 is already in use
+#undef CAR_HAS_TILT_SERVO                 // pin 12 is already in use
 #endif
 
 #define PIN_TRIGGER_OUT                A0 // can we see the trigger signal?
