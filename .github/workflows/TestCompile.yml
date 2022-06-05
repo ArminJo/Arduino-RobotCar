@@ -43,12 +43,13 @@ jobs:
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -DUSE_ADAFRUIT_MOTOR_SHIELD
 
-          - arduino-boards-fqbn: arduino:avr:uno|BreadboardFull # Nano board with TB6612 breakout board
+          - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
             build-properties:
               RobotCarBlueDisplay:
-                -DTBB6612_4WD_4AA_FULL_CONFIGURATION
+                -DMOTOR_SHIELD_2WD_FULL_CONFIGURATION
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -mcall-prologues # reduces size by 870 bytes
+                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
+                -mcall-prologues
 
           - arduino-boards-fqbn: arduino:avr:uno|BreadboardFull # Nano board with TB6612 breakout board
             build-properties:
@@ -66,14 +67,6 @@ jobs:
                 -DUS_SENSOR_SUPPORTS_1_PIN_MODE
                 -mcall-prologues # reduces size by 870 bytes
 
-          - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
-            build-properties:
-              RobotCarBlueDisplay:
-                -DMOTOR_SHIELD_2WD_ENCODER_TOF_CONFIGURATION
-                -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
-                -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
-                -mcall-prologues
 
     steps:
       - name: Checkout
