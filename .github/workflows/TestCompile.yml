@@ -32,7 +32,7 @@ jobs:
           - arduino:avr:uno
           - arduino:avr:uno|TimeOfFlight
           - arduino:avr:uno|BreadboardFull
-          - arduino:avr:uno|Mecanum
+#          - arduino:avr:uno|Mecanum
 
         include:
           - arduino-boards-fqbn: arduino:avr:uno
@@ -41,7 +41,7 @@ jobs:
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUS_SENSOR_SUPPORTS_1_PIN_MODE
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
-                -DUSE_ADAFRUIT_MOTOR_SHIELD
+                -mcall-prologues # reduces size by 870 bytes
 
           - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
             build-properties:
@@ -59,14 +59,16 @@ jobs:
                 -DUS_SENSOR_SUPPORTS_1_PIN_MODE
                 -mcall-prologues # reduces size by 870 bytes
 
-          - arduino-boards-fqbn: arduino:avr:uno|Mecanum # Nano board with TB6612 breakout board + 4 mecanum wheels
-            build-properties:
-              RobotCarBlueDisplay:
-                -DMECANUM_BASIC_CONFIGURATION
-                -DBLUETOOTH_BAUD_RATE=BAUD_115200
-                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
-                -mcall-prologues # reduces size by 870 bytes
+#          - arduino-boards-fqbn: arduino:avr:uno|Mecanum # Nano board with TB6612 breakout board + 4 mecanum wheels
+#            build-properties:
+#              RobotCarBlueDisplay:
+#                -DMECANUM_BASIC_CONFIGURATION
+#                -DBLUETOOTH_BAUD_RATE=BAUD_115200
+#                -DUS_SENSOR_SUPPORTS_1_PIN_MODE
+#                -mcall-prologues # reduces size by 870 bytes
 
+      # Do not cancel all jobs / architectures if one job fails
+      fail-fast: false
 
     steps:
       - name: Checkout
