@@ -15,8 +15,8 @@
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
@@ -129,6 +129,7 @@ public:
     void moveStar(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveFullStar(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveSqare(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveCenteredSqare(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveRectangle(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveHexagon(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveTriangle0(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
@@ -136,7 +137,7 @@ public:
     void moveBigPlus(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveRhombus(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
     void moveTrapezium(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
-    void moveTestDistances(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
+    void moveThreeDirectionsForManualCalibration(uint8_t aRequestedSpeedPWM, unsigned int aMillisforOneMove, unsigned int aDelayBetweenMoves = 0);
 
     void doDemo();
 

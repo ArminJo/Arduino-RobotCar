@@ -14,8 +14,8 @@
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
@@ -34,8 +34,8 @@
 #define AVERAGE_SPEED_BUFFER_SIZE       21 // one more than samples, because speed is the difference between 2 samples
 #endif
 
-// maybe useful especially for more than 2 motors
-//#define ENABLE_MOTOR_LIST_FUNCTIONS
+// Maybe useful especially for more than 2 motors
+//#define ENABLE_MOTOR_LIST_FUNCTIONS     // Enables the convenience functions *AllMotors*() and *forAll(). Requires up to 80 bytes program space and 7 bytes RAM.
 
 /*
  * 20 slot Encoder generates 4 to 5 Hz at min speed and 110 Hz at max speed => 200 to 8 ms per period

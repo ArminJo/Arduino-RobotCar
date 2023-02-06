@@ -32,8 +32,8 @@
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
@@ -359,7 +359,7 @@ bool PWMDcMotor::checkAndHandleDirectionChange(uint8_t aRequestedDirection) {
             stop(STOP_MODE_BRAKE);
             tReturnValue = true;
         }
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
         Serial.print(PWMPin);
         Serial.print(F(" Change motor mode from "));
         Serial.print(sDirectionCharArray[CurrentDirection]);
@@ -457,7 +457,7 @@ void PWMDcMotor::stop(uint8_t aStopMode) {
         aStopMode = DefaultStopMode;
     }
     setMotorDriverMode(aStopMode);
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
     Serial.print(PWMPin);
     Serial.print(F(" Stop motor StopMode="));
     Serial.println(aStopMode);
@@ -559,7 +559,7 @@ void PWMDcMotor::updateDriveSpeedPWM(uint8_t aDriveSpeedPWM) {
  * Else call setSpeedPWMAndDirection() directly, which sets CurrentCompensatedSpeedPWM
  */
 void PWMDcMotor::setSpeedPWMAndDirectionWithRamp(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection) {
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
     Serial.print(PWMPin);
     Serial.print(F(" Set PWM to "));
     Serial.print(aRequestedSpeedPWM);
@@ -574,24 +574,29 @@ void PWMDcMotor::setSpeedPWMAndDirectionWithRamp(uint8_t aRequestedSpeedPWM, uin
 #if defined(DO_NOT_SUPPORT_RAMP)
     setSpeedPWMAndDirection(aRequestedSpeedPWM, aRequestedDirection); // reduced to setSpeedPWMAndDirection()
 #else
-    if (MotorRampState == MOTOR_STATE_DRIVE && CurrentDirection == aRequestedDirection) {
-        /*
-         * motor is running -> just change drive speed
-         */
+    if (aRequestedSpeedPWM <= RAMP_UP_VALUE_OFFSET_SPEED_PWM) {
+        // Here ramp makes no sense, since requested PWM does not lead to spinning wheels
         setSpeedPWMAndDirection(aRequestedSpeedPWM, aRequestedDirection);
     } else {
-        checkAndHandleDirectionChange(aRequestedDirection);
-        /*
-         * Stopped here, now set target speed for ramp up
-         */
-        MotorRampState = MOTOR_STATE_START;
-        RequestedDriveSpeedPWM = aRequestedSpeedPWM;
-    }
-#  if defined(DEBUG)
-    Serial.print(F("MotorRampState="));
-    Serial.print(MotorRampState);
-    Serial.println();
+        if (MotorRampState == MOTOR_STATE_DRIVE && CurrentDirection == aRequestedDirection) {
+            /*
+             * motor is running -> just change drive speed
+             */
+            setSpeedPWMAndDirection(aRequestedSpeedPWM, aRequestedDirection);
+        } else {
+            checkAndHandleDirectionChange(aRequestedDirection);
+            /*
+             * Stopped here, now set target speed for ramp up
+             */
+            MotorRampState = MOTOR_STATE_START;
+            RequestedDriveSpeedPWM = aRequestedSpeedPWM;
+        }
+#  if defined(LOCAL_DEBUG)
+        Serial.print(F("MotorRampState="));
+        Serial.print(MotorRampState);
+        Serial.println();
 #  endif
+    }
 #endif // defined(DO_NOT_SUPPORT_RAMP)
 }
 
@@ -755,7 +760,7 @@ bool PWMDcMotor::updateMotor() {
      * End of motor state machine, now set speed if changed
      */
     if (tNewSpeedPWM != RequestedSpeedPWM) {
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
         Serial.print(PWMPin);
         Serial.print(F(" St="));
         Serial.print(MotorRampState);
@@ -819,6 +824,20 @@ void PWMDcMotor::startGoDistanceMillimeter(int aRequestedDistanceMillimeter) {
     }
 }
 
+uint32_t PWMDcMotor::convertMillimeterToMillis(uint8_t aSpeedPWM, unsigned int aRequestedDistanceMillimeter) {
+    return ((uint32_t) aRequestedDistanceMillimeter * MillisPerCentimeter * DriveSpeedPWMFor2Volt)
+            / ((uint_fast16_t) MILLIMETER_IN_ONE_CENTIMETER * aSpeedPWM);
+}
+
+unsigned int PWMDcMotor::convertMillisToMillimeter(uint8_t aSpeedPWM, unsigned int aMillis) {
+    return ((uint32_t) aMillis * aSpeedPWM * MILLIMETER_IN_ONE_CENTIMETER)
+            / ((uint_fast16_t) MillisPerCentimeter * DriveSpeedPWMFor2Volt);
+}
+
+unsigned int PWMDcMotor::convertMillisToCentimeterFor2Volt(unsigned int aMillis) {
+    return aMillis / MillisPerCentimeter;
+}
+
 /*
  * If motor is already running, just update speed and new stop time
  */
@@ -843,8 +862,7 @@ void PWMDcMotor::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned 
      * Compute milliseconds for distance by using MillisPerCentimeter (which is measured for 2 volt)
      * and scaling it for the requested aRequestedSpeedPWM
      */
-    uint32_t tComputedMillisOfMotorForDistance = (((uint32_t) tDistanceMillimeterDriveSpeed * MillisPerCentimeter
-            * DriveSpeedPWMFor2Volt) / ((uint_fast16_t) MILLIMETER_IN_ONE_CENTIMETER * aRequestedSpeedPWM));
+    uint32_t tComputedMillisOfMotorForDistance = convertMillimeterToMillis(aRequestedSpeedPWM, tDistanceMillimeterDriveSpeed);
 
     if (isStopped()) {
         // add startup time for the centimeter, we subtracted above
@@ -853,7 +871,7 @@ void PWMDcMotor::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned 
     // after check of isStopped(), set PWM
     setSpeedPWMAndDirectionWithRamp(aRequestedSpeedPWM, aRequestedDirection);
 
-#if defined(DEBUG)
+#if defined(LOCAL_DEBUG)
     Serial.print(F("Go for distance "));
     Serial.print(aRequestedDistanceMillimeter);
     Serial.print(F(" mm -> "));
@@ -960,7 +978,7 @@ void PWMDcMotor::printCompileOptions(Print *aSerial) {
 
     aSerial->print(F("FULL_BRIDGE_OUTPUT_MILLIVOLT="));
     aSerial->print(FULL_BRIDGE_OUTPUT_MILLIVOLT);
-    aSerial->print(
+    aSerial->println(
             F(
                     "mV (= FULL_BRIDGE_INPUT_MILLIVOLT|" STR(FULL_BRIDGE_INPUT_MILLIVOLT) "mV - FULL_BRIDGE_LOSS_MILLIVOLT|" STR(FULL_BRIDGE_LOSS_MILLIVOLT "mV)")));
 
