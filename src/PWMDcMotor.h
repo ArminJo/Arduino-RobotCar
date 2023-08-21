@@ -316,7 +316,7 @@ public:
     void setDirection(uint8_t aMotorDirection); // alias for setMotorDriverMode()
     void setSpeedPWM(uint8_t aRequestedSpeedPWM);
 
-    void setSpeedPWMAndDirection(int aRequestedSpeedPWM); // sign us used for direction
+    void setSpeedPWMAndDirection(int aSignedRequestedSpeedPWM); // sign us used for direction
     void changeSpeedPWM(uint8_t aRequestedSpeedPWM); // Keeps direction
     void setSpeedPWMAndDirection(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
     void setSpeedPWMAndDirectionWithRamp(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
@@ -441,9 +441,10 @@ public:
 };
 
 /*
- * Version 2.0.1 - 09/2022
- * - Added computedMillisOfMotorForDistance.
- * - Added MillimeterPer256Degree and MillimeterPer256DegreeInPlace instead of using always constants.
+ * Version 2.1.0 - 09/2023
+ * - Added convertMillimeterToMillis() etc.
+ * - Added Variable computedMillisOfMotorForDistance.
+ * - Added MillimeterPer256Degree and function setMillimeterPer256Degree() instead of using always constants.
  *
  * Version 2.0.0 - 06/2022
  * - Renamed instance from RobotCarPWMMotorControl to RobotCar.

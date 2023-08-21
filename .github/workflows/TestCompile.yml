@@ -20,7 +20,7 @@ on:
   pull_request:
 jobs:
   build:
-    name: Test compiling examples for UNO
+    name: Test compiling examples for Uno
     runs-on: ubuntu-latest
     env:
       REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl
@@ -44,7 +44,7 @@ jobs:
                 -DDISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN
                 -mcall-prologues # reduces size by 870 bytes
 
-          - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # UNO board with ToF distance sensor
+          - arduino-boards-fqbn: arduino:avr:uno|TimeOfFlight # Uno board with ToF distance sensor
             build-properties:
               RobotCarBlueDisplay:
                 -DMOTOR_SHIELD_2WD_FULL_CONFIGURATION
