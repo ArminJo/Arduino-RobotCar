@@ -498,6 +498,7 @@ void PWMDcMotor::setDriveSpeedPWM(uint8_t aDriveSpeedPWM) {
 }
 
 /*
+ * @param aFullBridgeInputVoltageMillivolt is used to compute the (reference) PWM for 2 volt.
  * Formula is: 2VPWM = (2000mV / tBridgeMillivolt) * MAX_SPEED_PWM
  */
 void PWMDcMotor::setDriveSpeedPWMFor2Volt(uint16_t aFullBridgeInputVoltageMillivolt) {
@@ -783,6 +784,10 @@ void PWMDcMotor::setMillimeterPerSecondForFixedDistanceDriving(uint16_t aMillime
     MillisPerCentimeter = MILLIS_IN_ONE_SECOND * MILLIMETER_IN_ONE_CENTIMETER / aMillimeterPerSecond;
 }
 
+/*
+ * Blocking call
+ * @param aRequestedDistanceMillimeter positive is forward, negative is backward
+ */
 void PWMDcMotor::goDistanceMillimeter(int aRequestedDistanceMillimeter) {
     uint8_t tRequestedDirection = DIRECTION_FORWARD;
     if (aRequestedDistanceMillimeter < 0) {
@@ -791,10 +796,16 @@ void PWMDcMotor::goDistanceMillimeter(int aRequestedDistanceMillimeter) {
     goDistanceMillimeter(DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, tRequestedDirection);
 }
 
+/*
+ * Blocking call
+ */
 void PWMDcMotor::goDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection) {
     goDistanceMillimeter(DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, aRequestedDirection);
 }
 
+/*
+ * Blocking call
+ */
 void PWMDcMotor::goDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
         uint8_t aRequestedDirection) {
     startGoDistanceMillimeter(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);

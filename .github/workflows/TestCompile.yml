@@ -76,7 +76,7 @@ jobs:
         uses: actions/checkout@master
 
       - name: Checkout new BlueDisplay library
-        uses: actions/checkout@v3
+        uses: actions/checkout@master
         with:
           repository: ArminJo/Arduino-BlueDisplay
           ref: master
@@ -85,7 +85,7 @@ jobs:
 
 # Currently included in source directory
 #      - name: Checkout new PWMMotorControl library
-#        uses: actions/checkout@v3
+#        uses: actions/checkout@master
 #        with:
 #          repository: ArminJo/PWMMotorControl
 #          ref: master
