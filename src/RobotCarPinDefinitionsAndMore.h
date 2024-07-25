@@ -44,8 +44,8 @@
  *
  * Motor Control
  * PIN  I/O Function
- *   2  I   Right motor encoder interrupt input | Force use of US distance sensor if IR distance sensor is available
- *   3  I   Left motor encoder interrupt input  | Distance tone feedback enable pin
+ *   2  I   Right motor encoder interrupt input | Force use of US distance sensor if IR distance sensor is available | Line follower sensor left
+ *   3  I   Left motor encoder interrupt input  | Distance tone feedback enable pin | Line follower sensor middle
  *   4  O   Right motor fwd     | Line follower sensor left
  *   5  O   Right motor PWM     | Line follower sensor middle
  *   6  O   Left motor PWM      | Line follower sensor right
@@ -54,18 +54,18 @@
  *   9  O/I Left motor back     | IR remote control signal in - on Adafruit Motor Shield marked as Servo Nr. 2
  *
  * PIN  I/O Function
- *  10  O   Servo distance sensor - on Adafruit Motor Shield marked as Servo Nr. 1
- *  11  I/O IR remote control signal in / Servo laser pan
- *  12  O   Buzzer for Uno board / Servo laser tilt
+ *  10  O   Servo for distance sensor - on Adafruit Motor Shield marked as Servo Nr. 1 | Line follower sensor right
+ *  11  I/O IR remote control signal in | Servo for laser pan | Line follower sensor right
+ *  12  O   Buzzer for Uno board | Servo for laser tilt
  *  13  O   Laser power
  *
  * PIN  I/O Function
  *  A0  O   US trigger (and echo in 1 pin US sensor mode) "URF 01 +" connector on the Arduino Sensor Shield
- *  A1  I   US echo on "URF 01 +" connector / IR distance if motor shield; requires no or 1 pin ultrasonic sensor if motor shield
+ *  A1  I   US echo on "URF 01 +" connector | IR distance if motor shield; requires no or 1 pin ultrasonic sensor if motor shield
  *  A2  I   VIN/11, 1MOhm to VIN, 100kOhm to ground - required for readVINVoltage(), camera supply control on NANO, IR in on Mecanum
- *  A3  I   IR distance, Buzzer on NANO
- *  A4  SDA I2C for motor shield / VL35L1X TOF sensor / MPU6050 accelerator and gyroscope
- *  A5  SCL I2C for motor shield / VL35L1X TOF sensor / MPU6050 accelerator and gyroscope
+ *  A3  I   IR distance | Buzzer on NANO
+ *  A4  SDA I2C for motor shield | VL35L1X TOF sensor | MPU6050 accelerator and gyroscope
+ *  A5  SCL I2C for motor shield | VL35L1X TOF sensor | MPU6050 accelerator and gyroscope
  *  A6  O   Only on NANO - IR distance
  *  A7  O   Only on NANO - VIN/11, 1MOhm to VIN, 100kOhm to ground
  */
@@ -94,6 +94,7 @@
 #define LINE_FOLLOWER_MID_SENSOR_PIN    5
 #define LINE_FOLLOWER_RIGHT_SENSOR_PIN  6
 #  endif
+
 #  if defined(CAR_HAS_ENCODERS)             // pin 2 and 3 are already occupied by encoder interrupts
 #    if (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)) && !defined(US_DISTANCE_SENSOR_ENABLE_PIN)
 #define US_DISTANCE_SENSOR_ENABLE_PIN   7   // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
@@ -105,8 +106,14 @@
 #  if !defined(IR_RECEIVE_PIN)
 #define IR_RECEIVE_PIN                    9   // on Adafruit Motor Shield marked as Servo Nr. 2
 #  endif
-#else
-//2 + 3 are reserved for encoder input
+#else // defined(USE_ADAFRUIT_MOTOR_SHIELD)
+//2 + 3 are normally reserved for encoder input
+#  if !defined(LINE_FOLLOWER_LEFT_SENSOR_PIN)
+#define LINE_FOLLOWER_LEFT_SENSOR_PIN   2
+#define LINE_FOLLOWER_MID_SENSOR_PIN    3
+#define LINE_FOLLOWER_RIGHT_SENSOR_PIN 11
+#endif
+
 #define RIGHT_MOTOR_FORWARD_PIN     4 // IN4 <- Label on the L298N board
 #define RIGHT_MOTOR_BACKWARD_PIN    7 // IN3
 #  if !defined(LEFT_MOTOR_PWM_PIN)
@@ -125,7 +132,7 @@
 #endif // defined(USE_ADAFRUIT_MOTOR_SHIELD)
 
 //Servo pins
-#define DISTANCE_SERVO_PIN         10 // Servo Nr. 2 on Adafruit Motor Shield - if pin 10 can be controlled by Distance.hpp and LightweightServo library
+#define DISTANCE_SERVO_PIN         10 // Servo Nr. 2 on Adafruit Motor Shield - pin 10 can be controlled by Distance.hpp and LightweightServo library
 #if defined(CAR_HAS_PAN_SERVO) && !defined(PAN_SERVO_PIN)
 #define PAN_SERVO_PIN              11
 #endif
@@ -228,20 +235,7 @@
 #  if !defined(LED_BUILTIN) && !defined(CAR_IS_ESP32_CAM_BASED)
 #define LED_BUILTIN PB1
 #  endif
-#define TONE_LEDC_CHANNEL               1  // Using channel 1 makes tone() independent of receiving timer -> No need to stop receiving timer.
-void tone(uint8_t _pin, unsigned int frequency){
-    ledcAttachPin(_pin, TONE_LEDC_CHANNEL);
-    ledcWriteTone(TONE_LEDC_CHANNEL, frequency);
-}
-void tone(uint8_t _pin, unsigned int frequency, unsigned long duration){
-    ledcAttachPin(_pin, TONE_LEDC_CHANNEL);
-    ledcWriteTone(TONE_LEDC_CHANNEL, frequency);
-    delay(duration);
-    ledcWriteTone(TONE_LEDC_CHANNEL, 0);
-}
-void noTone(uint8_t _pin){
-    ledcWriteTone(TONE_LEDC_CHANNEL, 0);
-}
+
 #else // NANO_BASED
 // Uno based
 // Pin A0 for VCC monitoring - ADC channel 2
