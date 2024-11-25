@@ -11,7 +11,7 @@
  *  Define ENABLE_USER_PROVIDED_COLLISION_DETECTION and overwrite the 2 functions myOwnFillForwardDistancesInfo()
  *  and doUserCollisionAvoiding() to test your own skill.
  *
- *  If Bluetooth is not connected, after TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (10 seconds) the car starts demo mode.
+ *  If Bluetooth is not connected, after TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (30 seconds) the car starts demo mode.
  *  After power up it runs in follower mode and after reset it runs in autonomous drive mode.
  *
  *  Program size of GUI is 63 percent of 32kByte.
@@ -32,16 +32,15 @@
 
 #include <Arduino.h>
 
-#define VERSION_EXAMPLE "2.0.1"
+#define VERSION_EXAMPLE "2.1.0"
 
 //#define DEBUG
 //#define TRACE
 /*
  * Timeouts for demo mode and inactivity remainder
  */
-#define TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS 240000L // move Servo after 4 Minutes of inactivity
-#define TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS 30000 // Start demo mode 30 seconds after boot up
-#define TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS 30000 // Start demo mode 30 seconds after boot up
+#define ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS 240000L // move Servo after 4 Minutes of inactivity
+#define TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS 30000 // Start demo mode 30 seconds after boot up
 
 /*
  * Car configuration
@@ -98,11 +97,13 @@ Servo TiltServo;
  */
 //#define NO_SERIAL_OUTPUT              // Saves up to 2532 bytes of program memory for L298_2WD_2LI_ION_BASIC_CONFIGURATION
 #if defined(NO_SERIAL_OUTPUT)           // No printing of any info with Serial.print or we get "multiple definition of __vector_18".
-#define USE_SIMPLE_SERIAL               // We can use simple serial here, since no Serial.print are active. Saves up to 2172 bytes in BlueDisplay library.
+#define BD_USE_SIMPLE_SERIAL               // We can use simple serial here, since no Serial.print are active. Saves up to 2172 bytes in BlueDisplay library.
 #else
 #define ENABLE_SERIAL_OUTPUT            // To avoid the double negation !defined(NO_SERIAL_OUTPUT)
 #endif
+#if defined(VIN_ATTENUATED_INPUT_PIN)
 #define MONITOR_VIN_VOLTAGE             // Enable monitoring of VIN voltage for exact movements, if available. Check at startup.
+#endif
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT) && (defined(MONITOR_VIN_VOLTAGE) || defined(CAR_HAS_IR_DISTANCE_SENSOR))
 // Must be defined before #include "BlueDisplay.hpp"
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
@@ -140,7 +141,8 @@ int doUserCollisionAvoiding();
  * Settings to configure the BlueDisplay library and to reduce its size
  */
 //#define BLUETOOTH_BAUD_RATE BAUD_115200  // Activate this, if you have reprogrammed the HC05 module for 115200, otherwise 9600 is used as baud rate
-#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // Disables unused basic touch events like down, move and up. Saves 620 bytes program memory and 36 bytes RAM
+#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // Disables unused basic touch events down, move and up. Saves 620 bytes program memory and 36 bytes RAM
+#define DO_NOT_NEED_LONG_TOUCH_DOWN_AND_SWIPE_EVENTS  // Disables LongTouchDown and SwipeEnd events. Saves up to 88 bytes program memory and 4 bytes RAM.
 #include "BlueDisplay.hpp"          // include source of library
 #if !defined(USE_BLUE_DISPLAY_GUI)
 #define USE_BLUE_DISPLAY_GUI        // for Distance.hpp and MecanumWheelCarPWMMotorControl.hpp included by CarPWMMotorControl.hpp
@@ -148,6 +150,7 @@ int doUserCollisionAvoiding();
 
 #include "CarPWMMotorControl.hpp"   // after BlueDisplay.hpp
 
+#define VOLTAGE_USB_POWERED_UPPER_THRESHOLD_MILLIVOLT   4975 // Because Uno boards lack the series diode and have a low voltage drop
 #include "RobotCarUtils.hpp"        // after BlueDisplay.hpp
 
 #if defined(USE_MPU6050_IMU)
@@ -223,8 +226,10 @@ void setup() {
      * Configure first set of pins
      */
     // initialize the digital pin as an output.
+#if defined(LED_BUILTIN)
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, LOW); // on my Uno R3 the LED is on otherwise
+#endif
 #if defined(CAR_HAS_LASER) && (LASER_OUT_PIN != LED_BUILTIN)
     pinMode(LASER_OUT_PIN, OUTPUT);
 #endif
@@ -263,7 +268,7 @@ void setup() {
 
     } else {
 #if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-#  if !defined(USE_SIMPLE_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
+#  if !defined(BD_USE_SIMPLE_SERIAL) && !defined(BD_USE_SERIAL1)  // print it now if not printed above
 #    if defined(__AVR_ATmega32U4__) || defined(SERIAL_PORT_USBVIRTUAL) || defined(SERIAL_USB) /*stm32duino*/|| defined(USBCON) /*STM32_stm32*/ \
     || defined(SERIALUSB_PID)  || defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_attiny3217)
     delay(4000); // To be able to connect Serial monitor after reset or power up and before first print out. Do not wait for an attached Serial Monitor!
@@ -275,7 +280,7 @@ void setup() {
 #  endif
 #endif
     }
-#if !defined(USE_SIMPLE_SERIAL) && !defined(USE_SERIAL1)  // print it now if not printed above
+#if !defined(BD_USE_SIMPLE_SERIAL) && !defined(BD_USE_SERIAL1)  // print it now if not printed above
     /*
      * Print this always, it can be seen in the app log
      */
@@ -371,7 +376,9 @@ void loop() {
         // first get EEPROM values, in order to not work with the values we accidently set before in a former calibration
         RobotCar.readCarValuesFromEeprom();
         displayRotationValues();
+#if defined(VIN_ATTENUATED_INPUT_PIN)
         calibrateDriveSpeedPWMAndPrint();
+#endif
 #  if !defined(USE_MPU6050_IMU) && (defined(CAR_HAS_4_WHEELS) || defined(CAR_HAS_4_MECANUM_WHEELS) || !defined(USE_ENCODER_MOTOR_CONTROL))
         if (!delayMillisAndCheckForStop(3000)) { // time to rearrange car
             calibrateRotation();
@@ -391,16 +398,19 @@ void loop() {
      * After 30 seconds of being disconnected, run the demo.
      * Do not run it if the car is connected to USB (e.g. for programming or debugging), which can be tested only for a Li-ion supply :-(.
      */
-    if (!sTimeoutDemoDisable && (millis() > TIMOUT_BEFORE_DEMO_MODE_STARTS_MILLIS)) {
+    if (!sTimeoutDemoDisable && (millis() > TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS)) {
         sTimeoutDemoDisable = true;
 
+#if defined(ADC_UTILS_ARE_AVAILABLE)
         if (isVCCUSBPowered()) {
-#if defined(ENABLE_SERIAL_OUTPUT)
+#  if defined(ENABLE_SERIAL_OUTPUT)
             Serial.print(F("Timeout and USB powered with "));
             Serial.print(sVCCVoltageMillivolt);
             Serial.println(F(" mV -> skip follower demo"));
+#  endif
+        } else
 #endif
-        } else {
+        {
             /*
              * Timeout just reached and not USB powered, play melody and start autonomous drive
              */
@@ -419,10 +429,10 @@ void loop() {
                 delayAndLoopGUI(60000); // wait a minute before next demo loop
                 sTimeoutDemoDisable = false;
 #elif defined(ENABLE_AUTONOMOUS_DRIVE)
-                GUISwitchPages(NULL, PAGE_AUTOMATIC_CONTROL);
+                GUISwitchPages(nullptr, PAGE_AUTOMATIC_CONTROL);
                 startStopAutomomousDrive(true, MODE_FOLLOWER);
 #else
-            GUISwitchPages(NULL, PAGE_HOME);
+            GUISwitchPages(nullptr, PAGE_HOME);
 #endif
             }
         }
@@ -431,8 +441,8 @@ void loop() {
     /*
      * After 4 minutes of user inactivity, make noise by scanning with US Servo and repeat it every 2. minute
      */
-    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS < millis()) {
-        sMillisOfLastReceivedBDEvent = millis() - (TIMOUT_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
+    if (BlueDisplay1.isConnectionEstablished() && sMillisOfLastReceivedBDEvent + ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS < millis()) {
+        sMillisOfLastReceivedBDEvent = millis() - (ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
 #if defined(CAR_HAS_DISTANCE_SERVO)
         fillAndShowForwardDistancesInfo(true, true);
 #  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)

@@ -33,12 +33,16 @@
 #include "HCSR04.hpp" // include sources
 #include "RobotCarConfigurations.h" // helps the pretty printer / Ctrl F
 
-#if defined(CAR_HAS_SERVO) && defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
-#define DISABLE_SERVO_TIMER_AUTO_INITIALIZE // saves 70 bytes program space
-#include "LightweightServo.hpp"
-#endif
-
 #if defined(CAR_HAS_DISTANCE_SERVO)
+#  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
+#include "LightweightServo.hpp"
+#    if defined(_LIGHTWEIGHT_SERVO_HPP)
+LightweightServo DistanceServo;    // The pan servo instance for distance sensor
+#    else // LightweightServo is not applicable for this CPU
+#undef USE_LIGHTWEIGHT_SERVO_LIBRARY
+#    endif
+#  endif // defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
+
 #  if !defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
 Servo DistanceServo;    // The pan servo instance for distance sensor
 #  endif
@@ -87,7 +91,7 @@ ForwardDistancesInfoStruct sForwardDistancesInfo;
 void initDistance() {
     getDistanceModesFromPins();
 
-#if defined(CAR_HAS_DISTANCE_SERVO) && !defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
+#if defined(CAR_HAS_DISTANCE_SERVO)
     DistanceServo.attach(DISTANCE_SERVO_PIN);
 #endif
 
@@ -492,11 +496,8 @@ void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop
     // The servo is top down and therefore inverted
     aTargetDegrees = 180 - aTargetDegrees;
 #endif
-#if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
-    write10(aTargetDegrees);
-#else
     DistanceServo.write(aTargetDegrees);
-#endif
+
 
     /*
      * Delay until stopped
@@ -625,10 +626,10 @@ int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
             }
 
             // Clear old line
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
+            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
                     sRawForwardDistancesArray[tIndex], tServoDegreeToScan, COLOR16_WHITE, 3);
             // draw new one and store value in distances array for clearing at next scan
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tServoDegreeToScan,
+            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tServoDegreeToScan,
                     tColor, 3);
             sRawForwardDistancesArray[tIndex] = tCentimeter;
         }
@@ -672,7 +673,7 @@ int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
      * Print results
      */
 #if defined(USE_BLUE_DISPLAY_GUI)
-    sprintf_P(sBDStringBuffer, PSTR("rotation:%3d\xB0 distance:%3dcm"), tRotationDegree, tMinDistance); // \xB0 is degree character
+    snprintf_P(sBDStringBuffer, sizeof(sBDStringBuffer), PSTR("rotation:%3d\xB0 distance:%3dcm"), tRotationDegree, tMinDistance); // \xB0 is degree character
     BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sBDStringBuffer, TEXT_SIZE_11,
             COLOR16_BLACK, COLOR16_WHITE);
 #else
@@ -818,9 +819,9 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
             /*
              * Clear old and draw new distance line
              */
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
+            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
                     sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR16_WHITE, 3);
-            BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
+            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
                     3);
         }
 
@@ -861,7 +862,7 @@ void drawForwardDistancesInfos() {
         /*
          * Draw line
          */
-        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
+        BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
         tCurrentDegrees += DEGREES_PER_STEP;
     }
 }
@@ -1023,7 +1024,7 @@ void doWallDetection() {
                 tNextDistanceOriginal = tNextDistanceComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                 if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                    BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
+                    BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
                             tCurrentAngleToCheck, COLOR16_WHITE, 1);
                 }
 #endif
@@ -1097,7 +1098,7 @@ void doWallDetection() {
                     tNextValue = tNextValueComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                        BlueDisplay1.drawVectorDegrees(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
+                        BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
                                 tCurrentAngleToCheck, COLOR16_WHITE, 1);
                     }
 #endif

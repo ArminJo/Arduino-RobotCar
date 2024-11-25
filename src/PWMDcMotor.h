@@ -14,7 +14,7 @@
  * With encoder: - distance is measured by Encoder.
  *
  *
- *  Copyright (C) 2019-2022  Armin Joachimsmeyer
+ *  Copyright (C) 2019-2024  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This file is part of PWMMotorControl https://github.com/ArminJo/PWMMotorControl.
@@ -71,6 +71,23 @@
 //#define USE_STANDARD_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD // Activate this to force using of Adafruit library. Requires 694 bytes program memory.
 #if !defined(USE_STANDARD_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD)
 #define _USE_OWN_LIBRARY_FOR_ADAFRUIT_MOTOR_SHIELD // to avoid double negations
+#endif
+
+/*
+ * Each two ESP32 channels share the same frequency and resolution, and if we allocate an even channel
+ * and the next (odd) ledc channel is initialized with another frequency/resolution e.g. for Servo,
+ * our channel also gets this frequency/resolution.
+ */
+#if defined(ESP32)
+#  if !defined ESP32_LEDC_MOTOR_CHANNEL
+#define ESP32_LEDC_MOTOR_CHANNEL               4 // 4 channels / 2 timers before
+#  endif
+#  if !defined ESP32_LEDC_MOTOR_CHANNEL_FREQUENCY
+#define ESP32_LEDC_MOTOR_CHANNEL_FREQUENCY  1000 // 1 kHz
+#  endif
+#  if !defined ESP32_LEDC_MOTOR_CHANNEL_RESOLUTION
+#define ESP32_LEDC_MOTOR_CHANNEL_RESOLUTION    8 // 8 bit
+#  endif
 #endif
 
 #if defined(USE_ADAFRUIT_MOTOR_SHIELD)
@@ -361,7 +378,11 @@ public:
     void startGoDistanceMillimeter(int aRequestedDistanceMillimeter); // Signed distance
     void startGoDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection);
     void startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+            uint8_t aRequestedDirection) __attribute__ ((deprecated ("Renamed to startGoDistanceMillimeterWithSpeed().")));
+    void startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, int aRequestedDistanceMillimeter); // Signed distance
+    void startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
             uint8_t aRequestedDirection);
+
     uint32_t convertMillimeterToMillis(uint8_t aSpeedPWM, unsigned int aRequestedDistanceMillimeter);
     unsigned int convertMillisToMillimeter(uint8_t aSpeedPWM, unsigned int aMillis);
     unsigned int convertMillisToCentimeterFor2Volt(unsigned int aMillis);
@@ -445,6 +466,11 @@ public:
 };
 
 /*
+ * Version 2.2.0 - 11/2024
+ * - Added 2 functions startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, ...).
+ * - ESP32 core 3.x support.
+ * - Improved examples, especially follower examples.
+ *
  * Version 2.1.0 - 09/2023
  * - Added convertMillimeterToMillis() etc.
  * - Added Variable computedMillisOfMotorForDistance.

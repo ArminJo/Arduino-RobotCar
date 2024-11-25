@@ -126,10 +126,10 @@ public:
     // If ramp up is not supported, these functions just sets the speed and return immediately
     void startRampUp(uint8_t aRequestedDirection = DIRECTION_FORWARD);
     void setSpeedPWMWithRamp(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection);
-    void waitForDriveSpeedPWM(void (*aLoopCallback)(void) = NULL);
+    void waitForDriveSpeedPWM(void (*aLoopCallback)(void) = nullptr);
     void startRampUpAndWait(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection = DIRECTION_FORWARD,
-            void (*aLoopCallback)(void) = NULL);
-    void startRampUpAndWaitForDriveSpeedPWM(uint8_t aRequestedDirection = DIRECTION_FORWARD, void (*aLoopCallback)(void) = NULL);
+            void (*aLoopCallback)(void) = nullptr);
+    void startRampUpAndWaitForDriveSpeedPWM(uint8_t aRequestedDirection = DIRECTION_FORWARD, void (*aLoopCallback)(void) = nullptr);
 
     /*
      * For car direction handling
@@ -141,14 +141,17 @@ public:
      * Functions for moving a fixed distance
      */
     // With signed distance
-    void startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
-            uint8_t aRequestedDirection); // only setup values
-    void startGoDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection); // only setup values
     void startGoDistanceMillimeter(int aRequestedDistanceMillimeter); // only setup values, no movement -> use updateMotors()
-
-    void goDistanceMillimeter(int aRequestedDistanceMillimeter, void (*aLoopCallback)(void) = NULL); // Blocking function, uses waitUntilStopped
+    void startGoDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection); // only setup values
+    void startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+    uint8_t aRequestedDirection)__attribute__ ((deprecated ("Renamed to startGoDistanceMillimeterWithSpeed()."))); // only setup values
+    void goDistanceMillimeter(int aRequestedDistanceMillimeter, void (*aLoopCallback)(void) = nullptr); // Blocking function, uses waitUntilStopped
+    void goDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, int aRequestedDistanceMillimeter, void (*aLoopCallback)(void) = nullptr); // Blocking function, uses waitUntilStopped
     void goDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection,
-            void (*aLoopCallback)(void) = NULL); // Blocking function, uses waitUntilStopped
+            void (*aLoopCallback)(void) = nullptr); // Blocking function, uses waitUntilStopped
+    void startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, int aRequestedDistanceMillimeter); // only setup values
+    void startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+            uint8_t aRequestedDirection); // only setup values
 
     bool checkAndHandleDirectionChange(uint8_t aRequestedDirection); // used internally
 
@@ -157,7 +160,7 @@ public:
      */
     void startRotate(int aRotationDegrees, turn_direction_t aTurnDirection, bool aUseSlowSpeed = false);
     void rotate(int aRotationDegrees, turn_direction_t aTurnDirection = TURN_IN_PLACE, bool aUseSlowSpeed = false,
-            void (*aLoopCallback)(void) = NULL);
+            void (*aLoopCallback)(void) = nullptr);
     void setMillimeterPer256Degree(uint16_t aMillimeterPerDegree);
     void setMillimeterPer256DegreeInPlace(uint16_t aMillimeterPerDegreeInPlace);
 
@@ -187,8 +190,8 @@ public:
      * Start/Stop functions
      */
     void startRampDown();
-    void stopAndWaitForIt(void (*aLoopCallback)(void) = NULL); // uses waitUntilStopped()
-    void waitUntilStopped(void (*aLoopCallback)(void) = NULL);
+    void stopAndWaitForIt(void (*aLoopCallback)(void) = nullptr); // uses waitUntilStopped()
+    void waitUntilStopped(void (*aLoopCallback)(void) = nullptr);
 
     /*
      * Check motor state functions

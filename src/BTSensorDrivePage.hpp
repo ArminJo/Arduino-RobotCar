@@ -134,7 +134,7 @@ void doSensorChange(uint8_t aSensorType, struct SensorCallback *aSensorCallbackI
                 tDirectionForward, SPEED_DEAD_BAND);
 
         //Print speedPWM as value of bottom slider
-        sprintf(sBDStringBuffer, "%3d", tForwardBackwardValue);
+        snprintf(sBDStringBuffer, sizeof(sBDStringBuffer), "%3d", tForwardBackwardValue);
         SliderBackward.printValue(sBDStringBuffer);
 
         /*
@@ -199,7 +199,7 @@ void doSensorChange(uint8_t aSensorType, struct SensorCallback *aSensorCallbackI
         /*
          * Print speedPWM as value of bottom slider
          */
-        sprintf(sBDStringBuffer, "%4d", tSpeedPWMValue);
+        snprintf(sBDStringBuffer, sizeof(sBDStringBuffer), "%4d", tSpeedPWMValue);
         SliderBackward.printValue(sBDStringBuffer);
         if (tSpeedPWMValue < 0) {
             tLeftRightValue = -tLeftRightValue;
@@ -221,13 +221,13 @@ void initBTSensorDrivePage(void) {
 // Position Slider at middle of screen
 // Top/forward slider
     SliderForward.init(SENSOR_SLIDER_CENTER_X, (SENSOR_SLIDER_CENTER_Y - VERTICAL_SLIDER_LENTGH), SENSOR_SLIDER_WIDTH,
-    VERTICAL_SLIDER_LENTGH, SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    VERTICAL_SLIDER_LENTGH, SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, nullptr);
 
 //    SliderForward.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
 
     // Bottom/backward slider
     SliderBackward.init(SENSOR_SLIDER_CENTER_X, SENSOR_SLIDER_CENTER_Y, SENSOR_SLIDER_WIDTH, -(VERTICAL_SLIDER_LENTGH),
-    SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, NULL);
+    SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, nullptr);
 
 //    SliderBackward.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
     SliderForward.setScaleFactor((float) MAX_SPEED_PWM / (float) VERTICAL_SLIDER_LENTGH);
@@ -238,13 +238,13 @@ void initBTSensorDrivePage(void) {
 // Position slider right from  at middle of screen
     SliderRight.init(SENSOR_SLIDER_CENTER_X + SENSOR_SLIDER_WIDTH, SENSOR_SLIDER_CENTER_Y - (SENSOR_SLIDER_WIDTH / 2),
     SENSOR_SLIDER_WIDTH, HORIZONTAL_SLIDER_LENTGH, SLIDER_LEFT_RIGHT_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR,
-            FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, NULL);
+            FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, nullptr);
 //    SliderRight.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
 
 // Position inverse slider left from  at middle of screen
     SliderLeft.init(SENSOR_SLIDER_CENTER_X - HORIZONTAL_SLIDER_LENTGH, SENSOR_SLIDER_CENTER_Y - (SENSOR_SLIDER_WIDTH / 2),
     SENSOR_SLIDER_WIDTH, -(HORIZONTAL_SLIDER_LENTGH), SLIDER_LEFT_RIGHT_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR,
-    SLIDER_BAR_COLOR, FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, NULL);
+    SLIDER_BAR_COLOR, FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, nullptr);
 //    SliderLeft.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
     SliderRight.setScaleFactor(1.2);
     SliderLeft.setScaleFactor(1.2);
@@ -268,7 +268,7 @@ void drawBTSensorDrivePage(void) {
 }
 
 void startBTSensorDrivePage(void) {
-    doReset(NULL, 0);
+    doReset(nullptr, 0);
     drawBTSensorDrivePage();
 }
 

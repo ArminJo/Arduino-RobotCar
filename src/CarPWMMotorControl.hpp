@@ -497,7 +497,7 @@ bool CarPWMMotorControl::updateMotors() {
  * @return true if not stopped (motor expects another update)
  */
 bool CarPWMMotorControl::updateMotors(void (*aLoopCallback)(void)) {
-    if (aLoopCallback != NULL) {
+    if (aLoopCallback != nullptr) {
         aLoopCallback();
     }
     return updateMotors();
@@ -553,13 +553,17 @@ void CarPWMMotorControl::startRampUpAndWaitForDriveSpeedPWM(uint8_t aRequestedDi
 }
 
 void CarPWMMotorControl::startGoDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection) {
-    startGoDistanceMillimeter(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, aRequestedDirection);
+    startGoDistanceMillimeterWithSpeed(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, aRequestedDirection);
 }
 
+void CarPWMMotorControl::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+        uint8_t aRequestedDirection) {
+    startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);
+}
 /*
  * initialize motorInfo fields LastDirection and CompensatedSpeedPWM
  */
-void CarPWMMotorControl::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
+void CarPWMMotorControl::startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, unsigned int aRequestedDistanceMillimeter,
         uint8_t aRequestedDirection) {
 
 #if defined(USE_MPU6050_IMU)
@@ -572,32 +576,45 @@ void CarPWMMotorControl::startGoDistanceMillimeter(uint8_t aRequestedSpeedPWM, u
             setSpeedPWMWithRamp(aRequestedSpeedPWM, aRequestedDirection);
 #else
     checkAndHandleDirectionChange(aRequestedDirection);
-    rightCarMotor.startGoDistanceMillimeter(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);
-    leftCarMotor.startGoDistanceMillimeter(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);
+    rightCarMotor.startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);
+    leftCarMotor.startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter, aRequestedDirection);
 #endif
 }
 
 void CarPWMMotorControl::goDistanceMillimeter(unsigned int aRequestedDistanceMillimeter, uint8_t aRequestedDirection,
         void (*aLoopCallback)(void)) {
-    startGoDistanceMillimeter(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, aRequestedDirection);
+    startGoDistanceMillimeterWithSpeed(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, aRequestedDirection);
     waitUntilStopped(aLoopCallback);
 }
 
 void CarPWMMotorControl::startGoDistanceMillimeter(int aRequestedDistanceMillimeter) {
     if (aRequestedDistanceMillimeter < 0) {
         aRequestedDistanceMillimeter = -aRequestedDistanceMillimeter;
-        startGoDistanceMillimeter(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, DIRECTION_BACKWARD);
+        startGoDistanceMillimeterWithSpeed(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, DIRECTION_BACKWARD);
     } else {
-        startGoDistanceMillimeter(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, DIRECTION_FORWARD);
+        startGoDistanceMillimeterWithSpeed(rightCarMotor.DriveSpeedPWMFor2Volt, aRequestedDistanceMillimeter, DIRECTION_FORWARD);
     }
 }
 
+void CarPWMMotorControl::startGoDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, int aRequestedDistanceMillimeter) {
+    if (aRequestedDistanceMillimeter < 0) {
+        aRequestedDistanceMillimeter = -aRequestedDistanceMillimeter;
+        startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter, DIRECTION_BACKWARD);
+    } else {
+        startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter, DIRECTION_FORWARD);
+    }
+}
 /**
  * Wait until distance is reached
  * @param  aLoopCallback called until car has stopped to avoid blocking
  */
 void CarPWMMotorControl::goDistanceMillimeter(int aRequestedDistanceMillimeter, void (*aLoopCallback)(void)) {
     startGoDistanceMillimeter(aRequestedDistanceMillimeter);
+    waitUntilStopped(aLoopCallback);
+}
+
+void CarPWMMotorControl::goDistanceMillimeterWithSpeed(uint8_t aRequestedSpeedPWM, int aRequestedDistanceMillimeter, void (*aLoopCallback)(void)) {
+    startGoDistanceMillimeterWithSpeed(aRequestedSpeedPWM, aRequestedDistanceMillimeter);
     waitUntilStopped(aLoopCallback);
 }
 
@@ -797,8 +814,8 @@ void CarPWMMotorControl::startRotate(int aRotationDegrees, turn_direction_t aTur
             tLeftMotorIfPositiveTurn->setSpeedPWMAndDirection(tTurnSpeedPWMLeft, DIRECTION_BACKWARD);
         }
 #else
-    tRightMotorIfPositiveTurn->startGoDistanceMillimeter(tTurnSpeedPWMRight, tDistanceMillimeterRight, DIRECTION_FORWARD);
-    tLeftMotorIfPositiveTurn->startGoDistanceMillimeter(tTurnSpeedPWMLeft, tDistanceMillimeterLeft, DIRECTION_BACKWARD);
+    tRightMotorIfPositiveTurn->startGoDistanceMillimeterWithSpeed(tTurnSpeedPWMRight, tDistanceMillimeterRight, DIRECTION_FORWARD);
+    tLeftMotorIfPositiveTurn->startGoDistanceMillimeterWithSpeed(tTurnSpeedPWMLeft, tDistanceMillimeterLeft, DIRECTION_BACKWARD);
 #endif
 }
 
@@ -893,7 +910,7 @@ uint8_t CarPWMMotorControl::getTurnDistanceHalfDegree() {
 //         */
 //        uint32_t tStartMillis = millis();
 //        do {
-//            if (aLoopCallback != NULL) {
+//            if (aLoopCallback != nullptr) {
 //                aLoopCallback();
 //            }
 //            if (isStopped()) {
@@ -942,16 +959,16 @@ uint8_t CarPWMMotorControl::getTurnDistanceHalfDegree() {
 
 void CarPWMMotorControl::printCalibrationValues(Print *aSerial) {
     aSerial->println(F("Calibration values:"));
-    aSerial->print(F("mm/256 deg="));
     aSerial->print(RobotCar.MillimeterPer256Degree);
-    aSerial->print(F(" inPlace="));
-    aSerial->println(RobotCar.MillimeterPer256DegreeInPlace);
-    aSerial->print(F("2 volt PWM right="));
+    aSerial->print(F(" mm per 256 deg, "));
+    aSerial->print(RobotCar.MillimeterPer256DegreeInPlace);
+    aSerial->println(F(" mm for inPlace"));
+    aSerial->print(F("PWM for 2 volt: right="));
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
     aSerial->println(RobotCar.rightCarMotor.DriveSpeedPWMFor2Volt);
 #else
     aSerial->print(RobotCar.rightCarMotor.DriveSpeedPWMFor2Volt);
-    aSerial->print(F(" left="));
+    aSerial->print(F(", left="));
     aSerial->println(RobotCar.leftCarMotor.DriveSpeedPWMFor2Volt);
 #endif
     aSerial->println();
