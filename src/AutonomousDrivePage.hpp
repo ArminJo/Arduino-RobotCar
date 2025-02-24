@@ -369,7 +369,7 @@ void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoC
         }
 
         // draw blue (red if backwards) rotation line. The default length is sCentimetersDrivenPerScan
-        BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
+        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
                 tColor);
         if (!aDoClearVector) {
             //Print result

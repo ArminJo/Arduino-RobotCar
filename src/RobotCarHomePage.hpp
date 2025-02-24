@@ -46,13 +46,13 @@ BDSlider SliderTilt;
 
 // Here we get values from 0 to 180 degrees from scaled slider
 #if defined(CAR_HAS_PAN_SERVO)
-void doHorizontalServoPosition(BDSlider *aTheTouchedSlider, uint16_t aValue) {
+void doHorizontalServoPosition(BDSlider *aTheTouchedSlider, int16_t aValue) {
     PanServo.write(aValue);
 }
 #endif
 
 #if defined(CAR_HAS_TILT_SERVO)
-void doVerticalServoPosition(BDSlider *aTheTouchedSlider, uint16_t aValue) {
+void doVerticalServoPosition(BDSlider *aTheTouchedSlider, int16_t aValue) {
     TiltServo.write(aValue);
 }
 #endif

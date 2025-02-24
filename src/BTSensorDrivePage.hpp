@@ -5,7 +5,7 @@
  *
  *  Requires BlueDisplay library.
  *
- *  Copyright (C) 2016-2022  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2025  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
@@ -221,30 +221,30 @@ void initBTSensorDrivePage(void) {
 // Position Slider at middle of screen
 // Top/forward slider
     SliderForward.init(SENSOR_SLIDER_CENTER_X, (SENSOR_SLIDER_CENTER_Y - VERTICAL_SLIDER_LENTGH), SENSOR_SLIDER_WIDTH,
-    VERTICAL_SLIDER_LENTGH, SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, nullptr);
+    VERTICAL_SLIDER_LENTGH, SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT);
 
 //    SliderForward.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
 
     // Bottom/backward slider
     SliderBackward.init(SENSOR_SLIDER_CENTER_X, SENSOR_SLIDER_CENTER_Y, SENSOR_SLIDER_WIDTH, -(VERTICAL_SLIDER_LENTGH),
-    SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT, nullptr);
+    SLIDER_SPEED_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR, FLAG_SLIDER_IS_ONLY_OUTPUT);
 
 //    SliderBackward.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
-    SliderForward.setScaleFactor((float) MAX_SPEED_PWM / (float) VERTICAL_SLIDER_LENTGH);
-    SliderBackward.setScaleFactor((float) MAX_SPEED_PWM / (float) VERTICAL_SLIDER_LENTGH); // second expression is optimized by compiler :-)
+    SliderForward.setMinMaxValue(0, MAX_SPEED_PWM);
+    SliderBackward.setMinMaxValue(0, MAX_SPEED_PWM); // second expression is optimized by compiler :-)
     sAccelerationForwardBackwardSliders.positiveSliderPtr = &SliderForward;
     sAccelerationForwardBackwardSliders.negativeSliderPtr = &SliderBackward;
 
 // Position slider right from  at middle of screen
     SliderRight.init(SENSOR_SLIDER_CENTER_X + SENSOR_SLIDER_WIDTH, SENSOR_SLIDER_CENTER_Y - (SENSOR_SLIDER_WIDTH / 2),
     SENSOR_SLIDER_WIDTH, HORIZONTAL_SLIDER_LENTGH, SLIDER_LEFT_RIGHT_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR, SLIDER_BAR_COLOR,
-            FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, nullptr);
+            FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE);
 //    SliderRight.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
 
 // Position inverse slider left from  at middle of screen
     SliderLeft.init(SENSOR_SLIDER_CENTER_X - HORIZONTAL_SLIDER_LENTGH, SENSOR_SLIDER_CENTER_Y - (SENSOR_SLIDER_WIDTH / 2),
     SENSOR_SLIDER_WIDTH, -(HORIZONTAL_SLIDER_LENTGH), SLIDER_LEFT_RIGHT_THRESHOLD, 0, SLIDER_BACKGROUND_COLOR,
-    SLIDER_BAR_COLOR, FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE, nullptr);
+    SLIDER_BAR_COLOR, FLAG_SLIDER_IS_HORIZONTAL | FLAG_SLIDER_IS_ONLY_OUTPUT | FLAG_SLIDER_SHOW_VALUE);
 //    SliderLeft.setBarThresholdColor(SLIDER_THRESHOLD_COLOR);
     SliderRight.setScaleFactor(1.2);
     SliderLeft.setScaleFactor(1.2);

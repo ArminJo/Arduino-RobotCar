@@ -132,8 +132,8 @@ extern bool sPlayMelody;
 extern bool sEnableDemo;
 #endif
 
-extern void doHorizontalServoPosition(BDSlider *aTheTouchedSlider, uint16_t aValue);
-extern void doVerticalServoPosition(BDSlider *aTheTouchedSlider, uint16_t aValue);
+extern void doHorizontalServoPosition(BDSlider *aTheTouchedSlider, int16_t aValue);
+extern void doVerticalServoPosition(BDSlider *aTheTouchedSlider, int16_t aValue);
 
 void initHomePage(void);
 void drawHomePage(void);
@@ -181,7 +181,7 @@ extern BDButton TouchButtonCompensationStore;
 #endif
 
 extern BDSlider SliderSpeed;
-extern uint16_t sLastSpeedSliderValue;
+extern int16_t sLastSpeedSliderValue;
 void showSpeedSliderValue();
 
 extern BDSlider SliderSpeedRight;

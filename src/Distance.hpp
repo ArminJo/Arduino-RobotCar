@@ -625,11 +625,11 @@ int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
                 tColor = COLOR16_YELLOW;
             }
 
-            // Clear old line
-            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
+            // Clear old line - use drawVectorDegreeWithAliasing to be able to clear line without residual
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
                     sRawForwardDistancesArray[tIndex], tServoDegreeToScan, COLOR16_WHITE, 3);
             // draw new one and store value in distances array for clearing at next scan
-            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tServoDegreeToScan,
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tServoDegreeToScan,
                     tColor, 3);
             sRawForwardDistancesArray[tIndex] = tCentimeter;
         }
@@ -819,9 +819,9 @@ bool __attribute__((weak)) fillAndShowForwardDistancesInfo(bool aDoFirstValue, b
             /*
              * Clear old and draw new distance line
              */
-            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y,
                     sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR16_WHITE, 3);
-            BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tCentimeter, tCurrentDegrees, tColor,
                     3);
         }
 
@@ -862,7 +862,7 @@ void drawForwardDistancesInfos() {
         /*
          * Draw line
          */
-        BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
+        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tDistance, tCurrentDegrees, tColor, 3);
         tCurrentDegrees += DEGREES_PER_STEP;
     }
 }
@@ -1024,7 +1024,7 @@ void doWallDetection() {
                 tNextDistanceOriginal = tNextDistanceComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                 if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                    BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
+                    BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextDistanceComputed,
                             tCurrentAngleToCheck, COLOR16_WHITE, 1);
                 }
 #endif
@@ -1098,7 +1098,7 @@ void doWallDetection() {
                     tNextValue = tNextValueComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                        BlueDisplay1.drawVectorDegree(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
+                        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, tNextValueComputed,
                                 tCurrentAngleToCheck, COLOR16_WHITE, 1);
                     }
 #endif
