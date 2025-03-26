@@ -254,7 +254,7 @@ void initBTSensorDrivePage(void) {
 
 void drawBTSensorDrivePage(void) {
     drawCommonGui();
-    BlueDisplay1.drawText(HEADER_X, TEXT_SIZE_22_HEIGHT + TEXT_SIZE_22_HEIGHT, F("Sensor drive"));
+    BlueDisplay1.drawText(HEADER_X, 4 + TEXT_SIZE_22_HEIGHT, F("Sensor drive"));
 
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
     TouchButtonTurnMode.drawButton();

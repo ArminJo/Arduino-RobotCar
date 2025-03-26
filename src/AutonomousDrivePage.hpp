@@ -91,7 +91,7 @@ void doNextDistanceFeedbackMode(BDButton *aTheTouchedButton, int16_t aValue) {
 #endif
 
 void setStepModeButtonText() {
-    TouchButtonStepMode.setTextFromStringArray((const __FlashStringHelper* const*) sStepModeButtonTextStringArray, sStepMode, (sCurrentPage == PAGE_AUTOMATIC_CONTROL));
+    TouchButtonStepMode.setPGMTextFromPGMArray(sStepModeButtonTextStringArray, sStepMode, (sCurrentPage == PAGE_AUTOMATIC_CONTROL));
 }
 
 /*
@@ -133,7 +133,7 @@ void doStep(BDButton *aTheTouchedButton, int16_t aValue) {
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
 void setScanModeButtonText() {
-    TouchButtonScanMode.setTextFromStringArray(sDistanceSourceModeButtonTextStringArray, sDistanceSourceMode);
+    TouchButtonScanMode.setPGMTextFromPGMArray(sDistanceSourceModeButtonTextStringArray, sDistanceSourceMode);
 }
 
 void doDistanceSourceMode(BDButton *aTheTouchedButton, int16_t aValue) {
@@ -250,7 +250,7 @@ void drawAutonomousDrivePage(void) {
     drawCommonGui();
 
     // - (TEXT_SIZE_22_WIDTH / 2) since we have one character more
-    BlueDisplay1.drawText(HEADER_X - (TEXT_SIZE_22_WIDTH / 2), (2 * TEXT_SIZE_22_HEIGHT), F("Auto drive"));
+    BlueDisplay1.drawText(HEADER_X - (TEXT_SIZE_22_WIDTH / 2), 4 + TEXT_SIZE_22_HEIGHT, F("Auto drive"));
 
 #if defined(ENABLE_PATH_INFO_PAGE)
     TouchButtonPathInfoPage.drawButton();
@@ -369,13 +369,13 @@ void drawCollisionDecision(int aDegreeToTurn, uint8_t aLengthOfVector, bool aDoC
         }
 
         // draw blue (red if backwards) rotation line. The default length is sCentimetersDrivenPerScan
-        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_ORIGIN_X, US_DISTANCE_MAP_ORIGIN_Y, aLengthOfVector, tDegreeToDisplay + 90,
+        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, aLengthOfVector, tDegreeToDisplay + 90,
                 tColor);
         if (!aDoClearVector) {
             //Print result
             snprintf_P(sBDStringBuffer, sizeof(sBDStringBuffer), PSTR("wall%4d\xB0 rotation: %3d\xB0 wall%4d\xB0"), sForwardDistancesInfo.WallLeftAngleDegrees,
                     aDegreeToTurn, sForwardDistancesInfo.WallRightAngleDegrees); // \xB0 is degree character
-            BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_ORIGIN_Y + TEXT_SIZE_11, sBDStringBuffer, TEXT_SIZE_11,
+            BlueDisplay1.drawText(BUTTON_WIDTH_3_5_POS_2, US_DISTANCE_MAP_START_Y + TEXT_SIZE_11, sBDStringBuffer, TEXT_SIZE_11,
             COLOR16_BLACK, COLOR16_WHITE);
         }
     }

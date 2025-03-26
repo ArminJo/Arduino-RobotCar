@@ -125,7 +125,7 @@ void initHomePage(void) {
  */
 void drawHomePage(void) {
     drawCommonGui();
-    BlueDisplay1.drawText(HEADER_X + TEXT_SIZE_22_WIDTH, (2 * TEXT_SIZE_22_HEIGHT), F("Control"));
+    BlueDisplay1.drawText(HEADER_X + TEXT_SIZE_22_WIDTH, 4 + TEXT_SIZE_22_HEIGHT, F("Control"));
 
 #if defined(CAR_HAS_4_WHEELS)
     char tCarTypeString[] = "4WD";
@@ -133,10 +133,10 @@ void drawHomePage(void) {
     char tCarTypeString[] = "2WD";
 #endif
 #if defined(CAR_HAS_CAMERA)
-    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), (2 * TEXT_SIZE_22_HEIGHT) + TEXT_SIZE_11_HEIGHT - 2, tCarTypeString,
+    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), 4 + TEXT_SIZE_22_HEIGHT + TEXT_SIZE_11_HEIGHT - 2, tCarTypeString,
             TEXT_SIZE_11, COLOR16_RED, COLOR16_NO_BACKGROUND);
 #else
-    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), (3 * TEXT_SIZE_22_HEIGHT), tCarTypeString);
+    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), 4 + (2 * TEXT_SIZE_22_HEIGHT), tCarTypeString);
 #endif
 
     TouchButtonRobotCarStartStop.drawButton();

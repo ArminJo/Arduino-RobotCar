@@ -189,7 +189,6 @@ void startStopRobotCar(bool aDoStart) {
             sSensorChangeCallCountForZeroAdjustment = 0;
             registerSensorChangeCallback(FLAG_SENSOR_TYPE_ACCELEROMETER, FLAG_SENSOR_DELAY_NORMAL, FLAG_SENSOR_NO_FILTER,
                     &doSensorChange);
-            // Lock the screen orientation to avoid screen flip while rotating the smartphone
             BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_CURRENT);
             sSensorCallbacksEnabled = true;
         } else {
@@ -218,7 +217,7 @@ void startStopRobotCar(bool aDoStart) {
              * Global stop for sensor drive
              */
             registerSensorChangeCallback(FLAG_SENSOR_TYPE_ACCELEROMETER, FLAG_SENSOR_DELAY_NORMAL, FLAG_SENSOR_NO_FILTER, nullptr);
-            BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_UNLOCK);
+            BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE);
             sSensorCallbacksEnabled = false;
         }
     }
@@ -437,11 +436,11 @@ void GUISwitchPages(BDButton *aTheTouchedButton, int16_t aValue) {
 
 void initRobotCarDisplay() {
 
-    BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_USE_MAX_SIZE, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    // Lock to landscape layout
+    BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_USE_MAX_SIZE | BD_FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE,
+            DISPLAY_WIDTH, DISPLAY_HEIGHT);
     BlueDisplay1.setCharacterMapping(0x87, 0x2227); // mapping for unicode AND used as Forward symbol
     BlueDisplay1.setCharacterMapping(0x88, 0x2228); // mapping for unicode OR used as Backwards symbol
-// Lock to landscape layout
-    BlueDisplay1.setScreenOrientationLock(FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE);
     initCommonGui();
 }
 
@@ -563,13 +562,14 @@ void initCommonGui() {
     SliderIROrTofDistance.setScaleFactor(DISTANCE_SLIDER_SCALE_FACTOR); // Slider is virtually 2 times larger, values were divided by 2
     SliderIROrTofDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
     // Caption properties
-    SliderIROrTofDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_VALUE_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_VALUE_CAPTION_BELOW, 2,
-            COLOR16_BLACK, COLOR16_WHITE);
+    SliderIROrTofDistance.setCaptionProperties(TEXT_SIZE_10,
+            FLAG_SLIDER_VALUE_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_VALUE_CAPTION_BELOW, 2, COLOR16_BLACK, COLOR16_WHITE);
     // Captions
     SliderIROrTofDistance.setCaption("IR");
     // value below caption - right aligned
-    SliderIROrTofDistance.setPrintValueProperties(TEXT_SIZE_11, FLAG_SLIDER_VALUE_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_VALUE_CAPTION_BELOW,
-            4 + TEXT_SIZE_10_HEIGHT, COLOR16_BLACK, COLOR16_WHITE);
+    SliderIROrTofDistance.setPrintValueProperties(TEXT_SIZE_11,
+            FLAG_SLIDER_VALUE_CAPTION_ALIGN_RIGHT | FLAG_SLIDER_VALUE_CAPTION_BELOW, 4 + TEXT_SIZE_10_HEIGHT, COLOR16_BLACK,
+            COLOR16_WHITE);
 #endif
 
 #if defined(CAR_HAS_PAN_SERVO)
@@ -607,7 +607,7 @@ void initCommonGui() {
 
 void drawCommonGui(void) {
     clearDisplayAndDisableButtonsAndSliders();
-    BlueDisplay1.drawText(HEADER_X, TEXT_SIZE_22_HEIGHT, F("Robot Car"), TEXT_SIZE_22, COLOR16_BLUE, COLOR16_NO_BACKGROUND);
+    BlueDisplay1.drawText(HEADER_X, 4, F("Robot Car"), TEXT_SIZE_22, COLOR16_BLUE, COLOR16_NO_BACKGROUND);
 }
 
 #if defined(MONITOR_VIN_VOLTAGE)
@@ -629,19 +629,19 @@ void readAndPrintVin() {
         uint16_t tPosX = BUTTON_WIDTH_8_POS_4;
         uint8_t tPosY;
         if (sCurrentPage == PAGE_HOME) {
-            tPosY = BUTTON_HEIGHT_8_LINE_6 + TEXT_SIZE_11_DECEND;
+            tPosY = BUTTON_HEIGHT_8_LINE_6;
 
         } else if (sCurrentPage == PAGE_AUTOMATIC_CONTROL || sCurrentPage == PAGE_BT_SENSOR_CONTROL) {
             tPosX = TEXT_SIZE_11_WIDTH;
             if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                tPosY = BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11_DECEND;
+                tPosY = BUTTON_HEIGHT_4_LINE_4 - (TEXT_SIZE_22_HEIGHT + BUTTON_DEFAULT_SPACING_QUARTER) - TEXT_SIZE_11;
             } else {
-                tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+                tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11;
             }
 
         } else {
             // Test page
-            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_DECEND;
+            tPosY = BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11;
         }
         BlueDisplay1.drawText(tPosX, tPosY, tDataBuffer, TEXT_SIZE_11, COLOR16_BLACK, COLOR16_WHITE);
     }
@@ -660,14 +660,14 @@ void checkForVCCUnderVoltage() {
 
         if (BlueDisplay1.isConnectionEstablished()) {
             drawCommonGui();
-            BlueDisplay1.drawText(10, 50, F("Battery voltage"), TEXT_SIZE_33, COLOR16_RED, COLOR16_WHITE);
+            BlueDisplay1.drawText(10, 30, F("Battery voltage"), TEXT_SIZE_33, COLOR16_RED, COLOR16_WHITE);
             // Print current "too low" voltage
             char tDataBuffer[18];
             char tVCCString[6];
             dtostrf(sVINVoltage, 4, 2, tVCCString);
             snprintf_P(tDataBuffer, sizeof(tDataBuffer), PSTR("%s volt"), tVCCString);
-            BlueDisplay1.drawText(80, 50 + TEXT_SIZE_33_HEIGHT, tDataBuffer);
-            BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 50 + (2 * TEXT_SIZE_33_HEIGHT), F("too low"));
+            BlueDisplay1.drawText(80, 30 + TEXT_SIZE_33_HEIGHT, tDataBuffer);
+            BlueDisplay1.drawText(10 + (4 * TEXT_SIZE_33_WIDTH), 30 + (2 * TEXT_SIZE_33_HEIGHT), F("too low"));
         }
 
         tone(BUZZER_PIN, 2200, 100);
