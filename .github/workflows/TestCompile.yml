@@ -25,9 +25,8 @@ jobs:
     name: Test compiling examples for Uno
     runs-on: ubuntu-latest
     env:
-      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl
+      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl,PWMMotorControl
 #      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,PlayRtttl,BlueDisplay
-#      REQUIRED_LIBRARIES: Servo,Adafruit Motor Shield V2 Library,BlueDisplay,PlayRtttl,SparkFun VL53L1X 4m Laser Distance Sensor
 
     strategy:
       matrix:
@@ -84,6 +83,7 @@ jobs:
           ref: master
           path: CustomLibrary_BD # must contain string "Custom"
           # Must remove BlueDisplay from REQUIRED_LIBRARIES
+          # No need to put this custom library in the required-libraries list
 
 # Currently included in source directory
 #      - name: Checkout new PWMMotorControl library
