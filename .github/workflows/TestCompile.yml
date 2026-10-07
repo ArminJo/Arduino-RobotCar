@@ -83,7 +83,6 @@ jobs:
           ref: master
           path: CustomLibrary_BD # must contain string "Custom"
           # Must remove BlueDisplay from REQUIRED_LIBRARIES
-          # No need to put this custom library in the required-libraries list
 
 # Currently included in source directory
 #      - name: Checkout new PWMMotorControl library

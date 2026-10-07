@@ -55,7 +55,6 @@
  * CAR_HAS_4_MECANUM_WHEELS
  * FRONT_RIGHT_MOTOR_FORWARD_PIN
  *
- *
  */
 
 #if !defined(DELAY_AND_RETURN_IF_STOP) // Is defined in IRCommandDispatcher.h or eventHandler.h as "if (delayMillisAndCheckForStop(aDurationMillis)) return"
@@ -63,12 +62,6 @@
 #endif
 #if !defined(IS_STOP_REQUESTED)
 #define IS_STOP_REQUESTED               false
-#endif
-
-#if defined(DEBUG)
-#define LOCAL_DEBUG
-#else
-//#define LOCAL_DEBUG // This enables debug output only for this file - only for development
 #endif
 
 #if defined(USE_BLUE_DISPLAY_GUI)
@@ -86,9 +79,21 @@ bool doCalibration = false;
 #  endif
 #include "ADCUtils.hpp"
 uint16_t sLastVINRawSum; // Sum of NUMBER_OF_VIN_SAMPLES raw readings of ADC, used to determine if voltage has changed and must be displayed.
-uint32_t sMillisOfLastVCCInfo;
 #endif // defined(VIN_ATTENUATED_INPUT_PIN)
 float sVINVoltage = FULL_BRIDGE_INPUT_MILLIVOLT / 1000; // Set default value for later use. Is used a parameter for getVoltageAdjustedSpeedPWM
+uint32_t sMillisOfLastVCCOrVINCheck;
+uint16_t sLastVCCVoltageMillivolt;
+bool sVoltageHasChanged = false;
+
+#define VIN_VOLTAGE_THRESHOLD_FOR_USB_POWERED_DETECTION     5.5 // Below this voltage at VIN, we assume to be USB powered
+uint8_t sLowVoltageCount = 0;
+#define LOW_VOLTAGE_COUNT_THRESHOLD     3
+#define isLowVoltage()  (sLowVoltageCount >= LOW_VOLTAGE_COUNT_THRESHOLD)
+
+// This block must be located after the includes of other *.hpp files
+//#define LOCAL_INFO  // This enables info output only for this file
+#define LOCAL_DEBUG // This enables debug output only for this file - only for development
+#include "LocalDebugLevelStart.h"
 
 //uint32_t sMillisOfLastAttention = 0;                            // millis() of last doAttention() or doWave()
 
@@ -120,9 +125,29 @@ void printConfigPinInfo(Print *aSerial, uint8_t aConfigPinNumber, const __FlashS
     }
 }
 
+void printVoltage() {
+#  if defined(VIN_ATTENUATED_INPUT_PIN)
+    Serial.print(sVINVoltage, 2);
+    Serial.println(F(" V-in"));
+#elif defined(ADC_UTILS_ARE_AVAILABLE)
+    Serial.print(sVCCVoltageMillivolt);
+    Serial.println(F(" mV-CC"));
+#  endif // defined(VIN_ATTENUATED_INPUT_PIN)
+}
+
+bool isUSBPowered() {
+#  if defined(VIN_ATTENUATED_INPUT_PIN)
+    return (sVINVoltage < VIN_VOLTAGE_THRESHOLD_FOR_USB_POWERED_DETECTION); // with USB, we may not have any voltage at VIN
+#  elif defined(ADC_UTILS_ARE_AVAILABLE)
+    return isVCCUSBPowered();
+#  else
+    return false;
+#  endif // defined(VIN_ATTENUATED_INPUT_PIN)
+}
+
 void printProgramOptions(Print *aSerial) {
     aSerial->println();
-    aSerial->println(F("Settings:"));
+    aSerial->println(F("Program settings:"));
 
 #if !defined(USE_BLUE_DISPLAY_GUI)
     aSerial->print(F("DO_NOT_USE_IR_REMOTE:"));
@@ -130,6 +155,15 @@ void printProgramOptions(Print *aSerial) {
     aSerial->print(reinterpret_cast<const __FlashStringHelper*>(StringNot));
 #  endif
     aSerial->println(reinterpret_cast<const __FlashStringHelper*>(StringDefined));
+#endif
+
+#if defined(AUX_PIN) && defined(CAR_HAS_4_MECANUM_WHEELS)
+    aSerial->print(F("Demo mode: "));
+    if(digitalRead(AUX_PIN)) {
+        aSerial->println(F("long"));
+    } else {
+        aSerial->println(F("short"));
+    }
 #endif
 
     aSerial->print(F("ENABLE_RTTTL_FOR_CAR:"));
@@ -149,16 +183,21 @@ void printProgramOptions(Print *aSerial) {
 
 #if defined(USE_BLUE_DISPLAY_GUI)
 #  if defined(ADC_UTILS_ARE_AVAILABLE)
-    aSerial->print(
-            F("If not powered by USB, run follower demo after " STR(TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS) " ms. USBpowered="));
-    aSerial->println(isVCCUSBPowered());
+    aSerial->print(F("USBpowered="));
+    aSerial->println(isUSBPowered());
+    aSerial->print(F("If not powered by USB: "));
+
 #  endif
 #endif
 
+#if defined(CAR_HAS_4_MECANUM_WHEELS)
+    aSerial->println(F("Run demo after " STR(TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS) " s"));
+#else
+    aSerial->println(F("Run follower demo after " STR(TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS) " s"));
     aSerial->println(
             F(
                     "Keep distance between " STR(FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) " and " STR(FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) " cm. Scan for target up to " STR(FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER) " cm"));
-
+#endif
 #if defined(US_DISTANCE_SENSOR_ENABLE_PIN) // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
     pinMode(US_DISTANCE_SENSOR_ENABLE_PIN, INPUT_PULLUP);
     printConfigPinInfo(aSerial, US_DISTANCE_SENSOR_ENABLE_PIN, F("US instead of IR distance input"));
@@ -181,7 +220,7 @@ void initRobotCarPWMMotorControl() {
     BACK_LEFT_MOTOR_FORWARD_PIN, BACK_LEFT_MOTOR_BACKWARD_PIN);
 #else
     RobotCar.init(RIGHT_MOTOR_FORWARD_PIN, RIGHT_MOTOR_BACKWARD_PIN, RIGHT_MOTOR_PWM_PIN, LEFT_MOTOR_FORWARD_PIN,
-    LEFT_MOTOR_BACKWARD_PIN, LEFT_MOTOR_PWM_PIN);
+            LEFT_MOTOR_BACKWARD_PIN, LEFT_MOTOR_PWM_PIN);
 #endif
 }
 
@@ -190,15 +229,17 @@ void initRobotCarPWMMotorControl() {
  * Functions to monitor VIN voltage
  ************************************/
 /*
+ * Not used yet
  * @return true, if voltage divider attached and VIN > 4.6 V
  */
 bool isVINProvided() {
     pinModeFast(VIN_ATTENUATED_INPUT_PIN, OUTPUT);
     digitalWriteFast(VIN_ATTENUATED_INPUT_PIN, LOW); // discharge any charge at pin
     pinModeFast(VIN_ATTENUATED_INPUT_PIN, INPUT);
+
     readVINVoltage();
     bool tVINProvided = sVINVoltage > 4.6; // with USB, we have around 4.5 volt at VIN
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
+#if defined(LOCAL_INFO) // requires 1504 bytes program space
     Serial.print(F("VIN voltage "));
     if (!tVINProvided) {
         Serial.print(F("not "));
@@ -216,18 +257,18 @@ bool isVINProvided() {
 
 /*
  * Read 10 samples covering a complete PWM period
- * @return true if voltage changed
+ * Sets sVINVoltage, sVoltageHasChanged and sLastVINRawSum
  */
-bool readVINVoltage() {
+void readVINVoltage() {
 #if defined(ESP32)
     // On ESP32 currently not supported
 #else
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR)
-    // Here we have also other channels than VIN, that we convert during the loop
+    // Here we have also other ADC channels than VIN, that we convert during the loop
     uint8_t tOldADMUX = checkAndWaitForReferenceAndChannelToSwitch(VIN_ATTENUATED_INPUT_CHANNEL, INTERNAL);
 #endif
     /*
-     * Here VIN is the only channel we convert.
+     * Here VIN is the only ADC channel we convert.
      * Get 10 samples lasting 1030 us, which is almost the PWM period of 1024 us.
      */
     uint16_t tVINRawSum = readADCChannelMultiSamplesWithReference(VIN_ATTENUATED_INPUT_CHANNEL, INTERNAL, NUMBER_OF_VIN_SAMPLES); // 10 samples
@@ -260,10 +301,11 @@ bool readVINVoltage() {
     // resolution is about 5 mV and we display in a 10 mV resolution -> compare with (2 * NUMBER_OF_VIN_SAMPLES)
     if (uintDifferenceAbs(sLastVINRawSum, tVINRawSum) > (2 * NUMBER_OF_VIN_SAMPLES)) {
         sLastVINRawSum = tVINRawSum;
-        return true;
+        sVoltageHasChanged = true;
+    } else {
+        sVoltageHasChanged = false;
     }
 #endif // defined(ESP32)
-    return false;
 }
 
 /*
@@ -282,7 +324,8 @@ void readVINVoltageAndAdjustDriveSpeedAndPrint() {
     RobotCar.setDriveSpeedPWMFor2Volt(sVINVoltage);
     PWMDcMotor::MotorPWMHasChanged = true; // to force a new display of motor voltage
 
-    snprintf_P(sBDStringBuffer, sizeof(sBDStringBuffer), PSTR("2 volt PWM %3d -> %3d"), tOldDriveSpeedPWM, RobotCar.rightCarMotor.DriveSpeedPWMFor2Volt);
+    snprintf_P(sBDStringBuffer, sizeof(sBDStringBuffer), PSTR("2 volt PWM %3d -> %3d"), tOldDriveSpeedPWM,
+            RobotCar.rightCarMotor.DriveSpeedPWMFor2Volt);
     BlueDisplay1.debug(sBDStringBuffer);
 #  else
     Serial.print(F("2 volt PWM: "));
@@ -295,38 +338,10 @@ void readVINVoltageAndAdjustDriveSpeedAndPrint() {
 }
 
 /*
- * Check VIN every 2 seconds (PRINT_VOLTAGE_PERIOD_MILLIS) and print if changed
- * Resolution is 10 mV
- * TODO implement check for low voltage
- */
-void checkVinPeriodicallyAndPrintIfChanged() {
-#if defined(ESP32)
-    // On ESP32 currently not supported
-#else
-
-    uint32_t tMillis = millis();
-
-    if (tMillis - sMillisOfLastVCCInfo >= PRINT_VOLTAGE_PERIOD_MILLIS) {
-        sMillisOfLastVCCInfo = tMillis;
-        /*
-         * Check if voltage has changed (44 bytes)
-         */
-        if (readVINVoltage()) {
-#  if defined(ENABLE_SERIAL_OUTPUT) // BlueDisplay - requires 1504 bytes program space
-            Serial.print(F("VIN="));
-            Serial.print(sVINVoltage);
-            Serial.println(F("V"));
-#  endif
-        }
-    }
-#endif // defined(ESP32)
-}
-
-/*
  * Start motors with DEFAULT_DRIVE_SPEED_PWM turning in place, get voltage after 400 ms and call setDriveSpeedPWMFor2Volt()
  */
 void calibrateDriveSpeedPWMAndPrint() {
-    // Turn right to get VIN value under load
+// Turn right to get VIN value under load
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
     RobotCar.startRotate(42, TURN_IN_PLACE); // 42 since we just turn for 400 ms
 #else
@@ -339,7 +354,7 @@ void calibrateDriveSpeedPWMAndPrint() {
     RobotCar.stop();
 
     DELAY_AND_RETURN_IF_STOP(400); // can be terminated here
-    // Now turn back left
+// Now turn back left
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
     RobotCar.startRotate(-42, TURN_IN_PLACE);
 #else
@@ -353,6 +368,64 @@ void calibrateDriveSpeedPWMAndPrint() {
 #endif
 }
 #endif // #if defined(VIN_ATTENUATED_INPUT_PIN)
+
+void readVCCOrVINVoltage() {
+#if defined(VIN_ATTENUATED_INPUT_PIN)
+    readVINVoltage();
+#elif defined(ADC_UTILS_ARE_AVAILABLE)
+    readVCCVoltage();
+#endif
+}
+
+/*
+ * Assumes, that voltage was read before, i.e. readVCCOrVINVoltage() was called before
+ * Undervoltage for VIN if < 2 * 3.45 V and > 5.5 V. If VIN < 5.5 V we are USB powered :-).
+ */
+bool isUnderVoltage() {
+#if defined(VIN_ATTENUATED_INPUT_PIN)
+    return (VIN_VOLTAGE_THRESHOLD_FOR_USB_POWERED_DETECTION < sVINVoltage) && (sVINVoltage < VOLTAGE_TWO_LI_ION_LOW_THRESHOLD);
+#elif defined(ADC_UTILS_ARE_AVAILABLE)
+    return (sVCCVoltageMillivolt < VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT);
+#else
+    return false;
+#endif
+}
+
+void readAndCheckVoltagePeriodically() {
+    uint32_t tMillis = millis();
+    if (tMillis - sMillisOfLastVCCOrVINCheck >= PRINT_VOLTAGE_PERIOD_MILLIS) {
+        sMillisOfLastVCCOrVINCheck = tMillis;
+        /*
+         * 1. Read voltage
+         * 2. Check for undervoltage
+         */
+        readVCCOrVINVoltage();
+#if !defined(VIN_ATTENUATED_INPUT_PIN) && defined(ADC_UTILS_ARE_AVAILABLE)
+        sVoltageHasChanged = (sLastVCCVoltageMillivolt != sVCCVoltageMillivolt); // is not done by readVCCVoltage();
+        sLastVCCVoltageMillivolt = sVCCVoltageMillivolt;
+#endif
+        if (isUnderVoltage()) {
+            if (sLowVoltageCount < LOW_VOLTAGE_COUNT_THRESHOLD) {
+                sLowVoltageCount++;
+            }
+        } else if (sLowVoltageCount > 0) {
+            sLowVoltageCount--;
+        }
+    }
+}
+
+void checkVinPeriodicallyAndPrintIfChanged() {
+    readAndCheckVoltagePeriodically(); // sets sLowVoltageCount
+    if (sVoltageHasChanged) {
+        sVoltageHasChanged = false; // Print only once
+#if defined(VIN_ATTENUATED_INPUT_PIN)
+        Serial.print(sVINVoltage, 2);
+#elif defined(ADC_UTILS_ARE_AVAILABLE)
+        Serial.print(sVCCVoltage, 2);
+#endif
+        Serial.println(F("V"));
+    }
+}
 
 /*
  * Not for 4WD cars with IMU or 2WD car with encoder motor.
@@ -377,15 +450,13 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
 #    else
     BlueDisplay1.debug(F("Press stop button at 720 deg.")); // Message must be less than 32 bytes
 #    endif
-    TouchButtonRobotCarStartStop.setValueAndDraw(BUTTON_AUTO_RED_GREEN_VALUE_FOR_GREEN);
+    TouchButtonRobotCarStartStop.setValueAndDraw(BUTTON_AUTO_TOGGLE_VALUE_FOR_GREEN);
 #else // defined(USE_BLUE_DISPLAY_GUI)
-#  if defined(ENABLE_SERIAL_OUTPUT) || defined(LOCAL_DEBUG) // BlueDisplay
-// requires 1504 bytes program space
-#    if defined(CAR_HAS_4_WHEELS) || defined(CAR_HAS_4_MECANUM_WHEELS)
-    Serial.println(F("Press stop button at 360 degree"));
-#    else
-    Serial.println(F("Press stop button at 720 degree"));
-#    endif
+    // No GUI here
+#  if defined(CAR_HAS_4_WHEELS) || defined(CAR_HAS_4_MECANUM_WHEELS)
+    INFO_PRINTLN(F("Press stop button at 360 degree"));
+#  else
+    INFO_PRINTLN(F("Press stop button at 720 degree"));
 #  endif
 #endif // defined(USE_BLUE_DISPLAY_GUI)
     /*
@@ -416,7 +487,7 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
             uint16_t tNewMillimeterPer256Degree = RobotCar.rightCarMotor.getDistanceMillimeter();
 #else
             unsigned long tMillisPer360Degree = millis() - tStartMillis;
-#  if defined(LOCAL_DEBUG) && !defined(USE_BLUE_DISPLAY_GUI)
+#  if defined(LOCAL_INFO) && !defined(USE_BLUE_DISPLAY_GUI)
             Serial.print(F("Millis for 360 degree="));
             Serial.println(tMillisPer360Degree);
 #  endif
@@ -479,9 +550,7 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
  */
 void testDriveTwoTurnsBothDirections() {
 #define NUMBER_OF_TEST_DRIVES       2
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.print(F("Move the wheels 2x a full turn i.e. " STR(DEFAULT_CIRCUMFERENCE_MILLIMETER) " mm, both directions"));
-#endif
+    INFO_PRINTLN(F("Move the wheels 2x a full turn i.e. " STR(DEFAULT_CIRCUMFERENCE_MILLIMETER) " mm, both directions"));
     for (int i = 0; i < NUMBER_OF_TEST_DRIVES; ++i) {
         RobotCar.goDistanceMillimeter(DEFAULT_CIRCUMFERENCE_MILLIMETER);
         DELAY_AND_RETURN_IF_STOP(500);
@@ -500,9 +569,8 @@ void testDriveTwoTurnsBothDirections() {
  */
 void testDriveTwoTurnsIn5PartsBothDirections() {
     uint8_t tDirection = DIRECTION_FORWARD;
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.print(F("Move the wheels 2x 1/8 + 1/4 + 1/2 + 1 turn i.e. " STR(2 * DEFAULT_CIRCUMFERENCE_MILLIMETER)" mm, both directions"));
-#endif
+    INFO_PRINTLN(
+            F("Move the wheels 2x 1/8 + 1/4 + 1/2 + 1 turn i.e. " STR(2 * DEFAULT_CIRCUMFERENCE_MILLIMETER)" mm, both directions"));
     for (int i = 0; i < 2; ++i) {
         RobotCar.goDistanceMillimeter(DEFAULT_CIRCUMFERENCE_MILLIMETER / 8, tDirection);
         DELAY_AND_RETURN_IF_STOP(2000);
@@ -529,59 +597,50 @@ void testDriveTwoTurnsIn5PartsBothDirections() {
 void testRotation() {
 #define DEGREE_OF_TEST_ROTATION    10
 #define NUMBER_OF_TEST_ROTATIONS    9 // to have 90 degree at 9 times 10 degree rotation
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.println(F("Rotate forward 9 times for 10 degree"));
-#endif
+
+    INFO_PRINTLN(F("Rotate forward 9 times for 10 degree"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(DEGREE_OF_TEST_ROTATION, TURN_FORWARD);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-    // rotate back
+
+// rotate back
     DELAY_AND_RETURN_IF_STOP(1000);
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.println(F("Rotate back for 90 degree"));
-#endif
+    INFO_PRINTLN(F("Rotate back for 90 degree"));
     RobotCar.rotate(-(DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_FORWARD);
     DELAY_AND_RETURN_IF_STOP(3000);
 
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.println(F("Rotate backwards"));
-#endif
+    INFO_PRINTLN(F("Rotate backwards"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(-DEGREE_OF_TEST_ROTATION, TURN_FORWARD);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-    // rotate back
+// rotate back
     DELAY_AND_RETURN_IF_STOP(1000);
     RobotCar.rotate((DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_FORWARD);
     DELAY_AND_RETURN_IF_STOP(2000);
 
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.println(F("Rotate in place"));
-#endif
+    INFO_PRINTLN(F("Rotate in place"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(DEGREE_OF_TEST_ROTATION, TURN_IN_PLACE);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-    // rotate back
+// rotate back
     DELAY_AND_RETURN_IF_STOP(1000);
     RobotCar.rotate(-(DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_IN_PLACE);
     DELAY_AND_RETURN_IF_STOP(2000);
 
-#if defined(ENABLE_SERIAL_OUTPUT) // requires 1504 bytes program space
-    Serial.println(F("Rotate in place backwards"));
-#endif
+    INFO_PRINTLN(F("Rotate in place backwards"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(-DEGREE_OF_TEST_ROTATION, TURN_IN_PLACE);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-    // rotate back
+// rotate back
     DELAY_AND_RETURN_IF_STOP(1000);
     RobotCar.rotate((DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_IN_PLACE);
     DELAY_AND_RETURN_IF_STOP(2000);
 }
 
-#if defined(LOCAL_DEBUG)
-#undef LOCAL_DEBUG
-#endif
+#include "LocalDebugLevelEnd.h"
+
 #endif // _ROBOT_CAR_UTILS_HPP

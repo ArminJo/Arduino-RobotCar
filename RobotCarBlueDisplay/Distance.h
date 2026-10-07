@@ -73,7 +73,7 @@ typedef enum distance_range {
 } distance_range_t;
 distance_range_t getDistanceRange(uint8_t aCentimeter);
 extern const char RangeCharacterArray[];
-void printDistanceRangeCharacter(distance_range_t aRange, Print *aSerial);
+void printDistanceRangeCharacter(Print *aSerial, distance_range_t aRange);
 
 /*
  * Constants for uint8_t sDistanceFeedbackMode

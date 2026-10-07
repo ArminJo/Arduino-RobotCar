@@ -33,10 +33,9 @@ void initRobotCarPWMMotorControl();
 bool isVINProvided();
 extern uint16_t sLastVINRawSum;   // Sum of NUMBER_OF_VIN_SAMPLES raw readings of ADC
 extern float sVINVoltage;
-bool readVINVoltage();
+void readVINVoltage();
 void readVINVoltageAndAdjustDriveSpeedAndPrint();
 void calibrateDriveSpeedPWMAndPrint();
-void checkVinPeriodicallyAndPrintIfChanged();
 #endif
 
 /*
