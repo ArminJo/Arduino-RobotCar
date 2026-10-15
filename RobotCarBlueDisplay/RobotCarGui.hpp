@@ -25,9 +25,12 @@
 #include "RobotCarHomePage.hpp"
 #include "RobotCarTestPage.hpp"
 #include "BTSensorDrivePage.hpp"
-#if defined(ENABLE_AUTONOMOUS_DRIVE)
+#if defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
 #include "AutonomousDrive.hpp"
 #include "AutonomousDrivePage.hpp"
+#endif
+#if defined(CAR_HAS_LINE_FOLLOWER_SENSOR)
+#include "LineFollower.hpp"
 #endif
 #if defined(ENABLE_PATH_INFO_PAGE)
 #include "PathInfoPage.hpp"

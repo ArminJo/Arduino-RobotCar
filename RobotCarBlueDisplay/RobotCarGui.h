@@ -50,7 +50,7 @@ extern char sBDStringBuffer[128];
 #define US_DISTANCE_MAP_START_X 200
 #define US_DISTANCE_MAP_START_Y 150
 
-#define MOTOR_INFO_START_X (BUTTON_WIDTH_6 + 4)
+#define MOTOR_INFO_START_X (BUTTON_WIDTH_6 + 3)
 #define MOTOR_INFO_START_Y (SPEED_SLIDER_SIZE / 2 + 26)
 
 #define PAGE_HOME               0 // Manual control page
@@ -96,7 +96,7 @@ void loopAutonomousDrivePage(void);
 void stopAutonomousDrivePage(void);
 
 void handleAutomomousDriveRadioButtons();
-void doStartStopFollowerMode(BDButton *aTheTouchedButton, int16_t aValue);
+void doStartStopDistanceFollowerMode(BDButton *aTheTouchedButton, int16_t aValue);
 void doStartStopAutomomousDrive(BDButton *aTheTouchedButton, int16_t aValue);
 void doStartStopTestUser(BDButton *aTheTouchedButton, int16_t aValue);
 

@@ -44,13 +44,13 @@
  * Motor Control
  * PIN  I/O Function
  *   2  I   Right motor encoder interrupt input | Force use of US distance sensor if IR distance sensor is available | Line follower sensor left
- *   3  I   Left motor encoder interrupt input  | Distance tone feedback enable pin | Line follower sensor middle
+ *   3  I   Left motor encoder interrupt input  | Distance tone feedback enable | Line follower sensor middle
  *   4  O   Right motor fwd     | Line follower sensor left
  *   5  O   Right motor PWM     | Line follower sensor middle
  *   6  O   Left motor PWM      | Line follower sensor right
- *   7  O   Right motor back    | Force use of US distance sensor enable pin
- *   8  O   Left motor fwd      | Distance tone feedback enable pin
- *   9  O/I Left motor back     | IR remote control signal in - on Adafruit Motor Shield marked as Servo Nr. 2
+ *   7  O   Right motor back    | Force use of US distance sensor if IR distance sensor is available, LOW = Use US distance
+ *   8  O   Left motor fwd      | Distance tone feedback enable, LOW = enabled
+ *   9  O/I Left motor back     | IR remote control signal in | AUX pin for demo - on Adafruit Motor Shield marked as Servo Nr. 2 PWM
  *
  * PIN  I/O Function
  *  10  O   Servo for distance sensor - on Adafruit Motor Shield marked as Servo Nr. 1 | Line follower sensor right
@@ -62,9 +62,9 @@
  *  A0  O   US trigger (and echo in 1 pin US sensor mode) "URF 01 +" connector on the Arduino Sensor Shield
  *  A1  I   US echo on "URF 01 +" connector | IR distance if motor shield; requires no or 1 pin ultrasonic sensor if motor shield
  *  A2  I   VIN/11, 1MOhm to VIN, 100kOhm to ground - required for readVINVoltage(), camera supply control on NANO, IR in on Mecanum
- *  A3  I   IR distance | Buzzer on NANO
- *  A4  SDA I2C for motor shield | VL35L1X TOF sensor | MPU6050 accelerator and gyroscope
- *  A5  SCL I2C for motor shield | VL35L1X TOF sensor | MPU6050 accelerator and gyroscope
+ *  A3  I   IR distance | Buzzer on NANO | AUX pin for demo (mecanum car)
+ *  A4  SDA I2C for motor shield, VL35L1X TOF sensor, MPU6050 accelerator and gyroscope
+ *  A5  SCL I2C for motor shield, VL35L1X TOF sensor,r MPU6050 accelerator and gyroscope
  *  A6  O   Only on NANO - IR distance
  *  A7  O   Only on NANO - VIN/11, 1MOhm to VIN, 100kOhm to ground
  */
@@ -80,39 +80,38 @@
 #    endif
 #    if !defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) && !defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN)
 #define DISTANCE_TONE_FEEDBACK_ENABLE_PIN   3 // If this pin is connected to ground, enable distance feedback
-#   endif
-# endif// !defined(US_DISTANCE_SENSOR_ENABLE_PIN)
+#    endif
+#  endif // !defined(US_DISTANCE_SENSOR_ENABLE_PIN)
 #endif
 
-#if !defined(CAR_HAS_4_MECANUM_WHEELS) && !defined(CAR_IS_ESP32_CAM_BASED)
-
-#if defined(USE_ADAFRUIT_MOTOR_SHIELD)
-// here pin 4 to 9 are available
-#  if !defined(LINE_FOLLOWER_LEFT_SENSOR_PIN)
+#if defined(CAR_HAS_LINE_FOLLOWER_SENSOR)
+#  if defined(CAR_HAS_ENCODERS)
 #define LINE_FOLLOWER_LEFT_SENSOR_PIN   4
 #define LINE_FOLLOWER_MID_SENSOR_PIN    5
 #define LINE_FOLLOWER_RIGHT_SENSOR_PIN  6
-#  endif
-
-#  if defined(CAR_HAS_ENCODERS)             // pin 2 and 3 are already occupied by encoder interrupts
-#    if (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)) && !defined(US_DISTANCE_SENSOR_ENABLE_PIN)
-#define US_DISTANCE_SENSOR_ENABLE_PIN   7   // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
-#    endif
-#    if !defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) && !defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN)
-#define DISTANCE_TONE_FEEDBACK_ENABLE_PIN 8 // If this pin is connected to ground, enable distance feedback
-#    endif
-#  endif
-#  if !defined(IR_RECEIVE_PIN)
-#define IR_RECEIVE_PIN                    9   // on Adafruit Motor Shield marked as Servo Nr. 2
-#  endif
-#else // defined(USE_ADAFRUIT_MOTOR_SHIELD)
+#  else
 //2 + 3 are normally reserved for encoder input
-#  if !defined(LINE_FOLLOWER_LEFT_SENSOR_PIN)
 #define LINE_FOLLOWER_LEFT_SENSOR_PIN   2
 #define LINE_FOLLOWER_MID_SENSOR_PIN    3
 #define LINE_FOLLOWER_RIGHT_SENSOR_PIN 11
-#endif
+#  endif // defined(CAR_HAS_ENCODERS)
+#endif // defined(CAR_HAS_LINE_FOLLOWER_SENSOR)
 
+#if defined(USE_ADAFRUIT_MOTOR_SHIELD)
+// here pin 4 to 9 are available
+#  if defined(CAR_HAS_ENCODERS)             // pin 2 and 3 are already occupied by encoder interrupts
+#    if (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)) && !defined(US_DISTANCE_SENSOR_ENABLE_PIN)
+#define US_DISTANCE_SENSOR_ENABLE_PIN       7   // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
+#    endif
+#    if defined(CAR_HAS_DISTANCE_SENSOR) && !defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN)
+#define DISTANCE_TONE_FEEDBACK_ENABLE_PIN   8 // If this pin is connected to ground, enable distance feedback tone
+#define LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN 8 // If this pin is connected to ground, follow a white line instead of a black one
+#    endif
+#  endif
+#  if !defined(IR_RECEIVE_PIN)
+#define IR_RECEIVE_PIN                      9   // on Adafruit Motor Shield marked as Servo Nr. 2. If no IR, it is used as AUX_PIN
+#  endif
+#else // defined(USE_ADAFRUIT_MOTOR_SHIELD)
 #define RIGHT_MOTOR_FORWARD_PIN     4 // IN4 <- Label on the L298N board
 #define RIGHT_MOTOR_BACKWARD_PIN    7 // IN3
 #  if !defined(LEFT_MOTOR_PWM_PIN)
@@ -151,8 +150,6 @@
 #define LASER_OUT_PIN               LED_BUILTIN
 #endif
 
-#endif // !defined(CAR_HAS_4_MECANUM_WHEELS) && !defined(CAR_IS_ESP32_CAM_BASED)
-
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
 //2 + 3 are reserved for encoder input
 #define MOTOR_PWM_PIN                   5 // PWMB + PWMA <- Label on the TB6612 board
@@ -166,6 +163,9 @@
 #define FRONT_RIGHT_MOTOR_BACKWARD_PIN 10 // BIN2
 #define FRONT_LEFT_MOTOR_FORWARD_PIN   11 // AIN1
 #define FRONT_LEFT_MOTOR_BACKWARD_PIN  12 // AIN2
+
+#undef DISTANCE_SERVO_PIN // change it to new value for mecanum car
+#define DISTANCE_SERVO_PIN             13
 
 #if defined(CAR_HAS_PAN_SERVO) && !defined(PAN_SERVO_PIN)
 #undef CAR_HAS_PAN_SERVO                  // pin 11 is already in use
@@ -185,7 +185,6 @@
 #define IR_RECEIVE_PIN                 A2
 #endif
 
-#define DISTANCE_SERVO_PIN             13
 #if defined(CAR_HAS_LASER) && !defined(LASER_OUT_PIN)
 #undef CAR_HAS_LASER                      // pin 13 is used by distance servo
 #endif

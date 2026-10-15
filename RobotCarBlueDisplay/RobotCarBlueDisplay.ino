@@ -11,8 +11,9 @@
  *  Define ENABLE_USER_PROVIDED_COLLISION_DETECTION and overwrite the 2 functions myOwnFillForwardDistancesInfo()
  *  and doUserCollisionAvoiding() to test your own skill.
  *
- *  If Bluetooth is not connected, after TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (30 seconds) the car starts demo mode.
- *  After power up it runs in follower mode and after reset it runs in autonomous drive mode.
+ *  If Bluetooth is not connected, after TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (30 seconds) the car starts demo mode until connection or undervoltage.
+ *  For Mecanum cars AUX pin LOW selects multiple short instead of long demo.
+ *  For cars with distance servo, AUX pin LOW selects simple demo instead of follower demo.
  *
  *  Program size of GUI is 63 percent of 32kByte.
  *
@@ -31,18 +32,18 @@
 
 #include <Arduino.h>
 
-#define VERSION_EXAMPLE "2.2.0"
-
-#define INFO // Requires up to 2532 bytes of program memory for L298_2WD_2LI_ION_BASIC_CONFIGURATION
-//#define DEBUG
-//#define TRACE
+#define VERSION_EXAMPLE "3.1"
+// 3.1 Added line follower.
+// 3.0 Compatibility to latest BlueDisplay version.
+// 2.0 Improvements and renaming.
+// 2.0 Initial version.
 /*
  * Timeouts for demo mode and inactivity remainder
  */
 #define ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS 240000L // move Servo after 4 Minutes of inactivity
 #define TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS    30 // Start demo mode 30 seconds after boot up
-#define TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS      (TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS * MILLIS_IN_ONE_SECOND)
-#define TIMEOUT_BETWEEN_DEMOS_MILLIS           120000 // Repeat demo every 2 minutes
+#define TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS     (TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS * MILLIS_IN_ONE_SECOND)
+#define TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS         60000 // Repeat demo every minute
 
 /*
  * Car configuration
@@ -62,6 +63,7 @@
 //#define L298_2WD_2LI_ION_BASIC_CONFIGURATION          // China 2WD set with L298 bridge and Uno board with series diode for VIN + 2 Li-ion.
 //#define L298_2WD_2LI_ION_VIN_IR_CONFIGURATION         // L298_2WD_2LI_ION_BASIC + VIN voltage divider + IR distance
 //#define L298_2WD_2LI_ION_VIN_IR_IMU_CONFIGURATION     // L298_2WD_2LI_ION_BASIC + VIN voltage divider + IR distance + MPU6050
+//#define MOTOR_SHIELD_4WD_FULL_AND_LINE_FOLLOWER_CONFIGURATION  // Motor Shield + encoder + 2 Li-ion + servo head down + IR distance + TCRT 5000 3-channel sensor
 //#define MECANUM_US_DISTANCE_CONFIGURATION             // Nano Breadboard version with Arduino NANO, TB6612 mosfet bridge and 4 mecanum wheels + US distance + servo
 #define DO_NOT_SUPPORT_RAMP             // Ramps are anyway not used if drive speed voltage (default 2.0 V) is below 2.3 V. Saves 378 bytes program memory.
 #define USE_SOFT_I2C_MASTER             // Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
@@ -72,6 +74,21 @@
 #include "RobotCarConfigurations.h" // sets e.g. CAR_HAS_ENCODERS, USE_ADAFRUIT_MOTOR_SHIELD
 #include "RobotCarPinDefinitionsAndMore.h"
 
+#if !defined(NO_SERIAL_OUTPUT) // set by RobotCarConfigurations.h
+#define INFO // Requires up to 2532 bytes of program memory for L298_2WD_2LI_ION_BASIC_CONFIGURATION
+#endif
+//#define DEBUG
+//#define TRACE
+//#define TEST_TIMING
+
+/*
+ * Additional pin usage.
+ * If AUX_PIN is defined and AUX_PIN is LOW:
+ *  Mecanum Car: do short demo, otherwise do all demo moves in a row.
+ *  Line Follower sensors: do simple demo every minute, otherwise start line follower mode and wait 2 minutes
+ *  Distance sensors: do simple demo every minute, otherwise start distance follower mode
+ */
+
 /*
  * Enabling program features dependent on car configuration
  */
@@ -80,9 +97,6 @@
 #endif
 #if defined(CAR_HAS_MPU6050_IMU)
 #define USE_MPU6050_IMU             // Requires up to 2850 bytes program memory
-#endif
-#if defined(CAR_HAS_DISTANCE_SENSOR) && defined(CAR_HAS_DISTANCE_SERVO)
-#define ENABLE_AUTONOMOUS_DRIVE     // Enable if by default, if available
 #endif
 #if defined(CAR_HAS_PAN_SERVO)
 #include <Servo.h>
@@ -120,7 +134,8 @@ Servo TiltServo;
 #if !defined(NO_PATH_INFO_PAGE) && defined(USE_ENCODER_MOTOR_CONTROL) // We use LastRideEncoderCount for path info entry
 #define ENABLE_PATH_INFO_PAGE       // Requires up to 1400 bytes of program memory
 #endif
-//#define TEST_TIMING
+
+#define ENABLE_DISTANCE_FEEDBACK_MODE_GUI // Switch between "No tone", "Pentatonic" and "Continuous". 130 bytes
 
 /*
  * Values used in distance.hpp
@@ -134,6 +149,8 @@ Servo TiltServo;
 #if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
 int doUserCollisionAvoiding();
 #endif
+
+void loopMotion();
 
 /*
  * Settings to configure the BlueDisplay library and to reduce its size
@@ -168,6 +185,9 @@ bool sPlayMelody = false; // this flag may be reseted by checkAndHandleEvents()
 void playRandomMelody();
 #endif
 
+// This block must be located after the includes of other *.hpp files
+//#define LOCAL_INFO  // This enables info output only for this file
+//#define LOCAL_DEBUG // This enables debug output only for this file - only for development
 #include "LocalDebugLevelStart.h"
 
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
@@ -177,6 +197,7 @@ bool sEnableDemo = false; // modified by BD button
 void initServos();
 void handleNotConnectedDemo();
 void checkForCalibration();
+void doAttention();
 
 #if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
 /*************************************************************************************
@@ -189,7 +210,7 @@ void checkForCalibration();
 #define MINIMUM_DISTANCE_TO_FRONT 35
 
 int doUserCollisionAvoiding() {
-#if defined(ENABLE_AUTONOMOUS_DRIVE)
+#if defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
     // If left three distances are all less than 21 centimeter, then turn right.
     if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
             && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 1] <= MINIMUM_DISTANCE_TO_SIDE
@@ -254,6 +275,9 @@ void setup() {
 #if defined(CAR_HAS_DISTANCE_SERVO)
     sLastDistanceServoAngleInDegrees = 90; // is required before setupGUI()
 #endif
+#if defined(CAR_HAS_LINE_FOLLOWER_SENSOR) && !defined(LOCAL_INFO)
+    initLineFollowerSensorsAndPrint(&Serial);
+#endif
 
     // Must be after RobotCar.init, since it tries to stop motors in connect callback
     setupGUI(); // this enables output by BlueDisplay1 and lasts around 100 milliseconds
@@ -290,6 +314,9 @@ void setup() {
      */
     RobotCar.printCalibrationValues(&Serial);
     printConfigInfo(&Serial);
+#if defined(CAR_HAS_LINE_FOLLOWER_SENSOR) && defined(LOCAL_INFO)
+    initLineFollowerSensorsAndPrint(&Serial);
+#endif
     printProgramOptions(&Serial); // calls isUSBPowered()
     PWMDcMotor::printCompileOptions(&Serial);
 #endif
@@ -333,19 +360,16 @@ void loop() {
 #if defined(TEST_TIMING)
     digitalToggleFast(BUZZER_PIN);
 #endif
-    /*
-     * Required, if we use rotation, ramps and fixed distance driving
-     */
-    RobotCar.updateMotors(); // 2 us, if driving
 
     /*
      * Check periodically for voltage change, undervoltage, user input and update display output
      */
     loopGUI();
 
-#if defined(ENABLE_AUTONOMOUS_DRIVE)
-    driveAutonomousOneStep(); // Handle autonomous driving
-#endif
+    /*
+     * Call updateMotors for rotations etc. and handle autonomous driving
+     */
+    loopMotion();
 
 #if defined(ENABLE_RTTTL_FOR_CAR)
     /*
@@ -385,16 +409,34 @@ void loop() {
          * After 4 minutes of user inactivity at connection, play double tone and make noise by scanning with US Servo and then repeat it every 2. minute
          */
         sMillisOfLastReceivedBDEvent = millis() - (ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS / 2); // adjust sMillisOfLastReceivedBDEvent to have the next scan in 2 minutes
-        playDoubleTone();
+        doAttention();
+    }
+}
+
+/*
+ * Call updateMotors for rotations etc. and handle autonomous driving
+ */
+void loopMotion() {
+    /*
+     * Required, if we use rotation, ramps and fixed distance driving
+     */
+    RobotCar.updateMotors(); // 2 us, if driving
+
+#if defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
+    driveAutonomousOneStep(); // Handle autonomous driving
+#endif
+}
+
+void doAttention() {
+    playDoubleTone();
 #if defined(CAR_HAS_DISTANCE_SERVO)
-        fillAndShowForwardDistancesInfo(true, true);
+    fillAndShowForwardDistancesInfo(true, true);
 #  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
-        write10(90);
+    write10(90);
 #  else
-        DistanceServo.write(90); // set servo back to normal
+    DistanceServo.write(90); // set servo back to normal
 #  endif
 #endif
-    }
 }
 
 #if !defined(USE_MPU6050_IMU)
@@ -409,7 +451,7 @@ void checkForCalibration() {
         calibrateDriveSpeedPWMAndPrint();
 #  endif
 #  if !defined(USE_MPU6050_IMU) && (defined(CAR_HAS_4_WHEELS) || defined(CAR_HAS_4_MECANUM_WHEELS) || !defined(USE_ENCODER_MOTOR_CONTROL))
-        if (!delayMillisAndCheckForStop(3000)) { // time to rearrange car
+        if (!delayMillisHandleEventsAndBreakIfStopButtonPressed(3000)) { // time to rearrange car
             calibrateRotation();
         }
 #  else
@@ -419,6 +461,20 @@ void checkForCalibration() {
     }
 }
 #endif
+
+void doSimpleDemo() {
+    RobotCar.goDistanceMillimeter(100, &loopGUI); // check for undervoltage and connection
+    delayAndLoopGUI(500);
+    RobotCar.goDistanceMillimeter(-200, &loopGUI);
+    delayAndLoopGUI(500);
+    RobotCar.goDistanceMillimeter(100, &loopGUI);
+    delayAndLoopGUI(500);
+    RobotCar.rotate(90, TURN_IN_PLACE, false, &loopGUI);
+    delayAndLoopGUI(500);
+    RobotCar.rotate(-180, TURN_IN_PLACE, false, &loopGUI);
+    delayAndLoopGUI(500);
+    RobotCar.rotate(90, TURN_IN_PLACE, false, &loopGUI);
+}
 
 /*
  * After 30 seconds of being disconnected, start autonomous drive or the demo which is in turn repeated after 2 minutes.
@@ -439,11 +495,7 @@ void handleNotConnectedDemo() {
         /*
          * Timeout just reached and not USB powered, play melody and start demo or autonomous drive
          */
-#if defined(CAR_HAS_4_MECANUM_WHEELS)
-        INFO_PRINTLN(F("Timeout -> run demo and repeat it"));
-#else
-        INFO_PRINTLN(F("Timeout -> run follower demo"));
-#endif
+        INFO_PRINT(F("Timeout -> "));
         /*
          * Start demo once with a melody
          */
@@ -455,21 +507,57 @@ void handleNotConnectedDemo() {
          * Run and check forever, until we are connected
          */
         while (!BlueDisplay1.isConnectionEstablished()) {
+            tone(BUZZER_PIN, 2200, 100);
+
             // Set right page for reconnect
 #if defined(CAR_HAS_4_MECANUM_WHEELS)
+#  if defined(AUX_PIN)
             // If AUX_PIN is LOW, do short demo every minute, otherwise do all demo moves in a row every 2. minute.
             bool tDoLongDemo = digitalRead(AUX_PIN);
+#  else
+            bool tDoLongDemo = true;
+#  endif
             RobotCar.doDemo(tDoLongDemo);
-            delayAndLoopGUI(TIMEOUT_BETWEEN_DEMOS_MILLIS / 2); // wait 1 minute before next short demo and check for connection
+            INFO_PRINTLN(F("run demo"));
+            delayAndLoopGUI(TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS); // wait 1 minute before next short demo and check for undervoltage and connection
             if (tDoLongDemo) {
-                delayAndLoopGUI(TIMEOUT_BETWEEN_DEMOS_MILLIS / 2); // wait additional 1 minutes before next long demo and check for connection
+                delayAndLoopGUI(TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS); // wait additional 1 minutes before next long demo and check for undervoltage and connection
             }
-#elif defined(ENABLE_AUTONOMOUS_DRIVE)
-            GUISwitchPages(nullptr, PAGE_AUTOMATIC_CONTROL); // ??? we are not connected!
-            startStopAutomomousDrive(true, MODE_FOLLOWER);
-#else
-            GUISwitchPages(nullptr, PAGE_HOME); // no demo here
+            break; // skip doSimpleDemo() below
+#elif defined(CAR_HAS_LINE_FOLLOWER_SENSOR) // has precedence before autonomous drive demo
+#  if defined(AUX_PIN)
+            // If AUX_PIN is LOW, do simple demo every minute, otherwise start line follower mode and wait 2 minutes
+            bool tDoLineFollower = digitalRead(AUX_PIN);
+#  else
+            bool tDoLineFollower = true;
+#  endif
+            if (tDoLineFollower) {
+                INFO_PRINTLN(F("run line follower demo"));
+                sDoStep = true; // enable next step
+                startLineFollower();
+                sDriveMode = MODE_LINE_FOLLOWER; // start line follower, which is assumed to end in fixed time
+                delayAndLoopGUIAndMotion(TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS * 2); // wait 2 minutes before next demo and check for undervoltage and connection
+            } else
+#elif defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
+#  if defined(AUX_PIN)
+            // If AUX_PIN is LOW, do simple demo every minute, otherwise start distance follower mode
+            bool tDoDistanceFollower = digitalRead(AUX_PIN);
+#  else
+            bool tDoDistanceFollower = true;
+#  endif
+            if (tDoDistanceFollower) {
+                if(!sDoStep) {
+                    INFO_PRINTLN(F("start distance follower"));
+                    startStopAutomomousDrive(true, MODE_DISTANCE_FOLLOWER); // start distance follower
+                }
+                loopGUI();
+                loopMotion();
+            } else
 #endif
+            {
+                doSimpleDemo();
+                delayAndLoopGUI(TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS); // wait 1 minute before short demo and check for undervoltage and connection
+            }
         }
     }
 }

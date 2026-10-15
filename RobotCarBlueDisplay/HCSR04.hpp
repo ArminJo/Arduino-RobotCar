@@ -242,7 +242,7 @@ uint8_t getUSDistanceAsCentimeterWithCentimeterTimeoutPeriodicallyAndPrintIfChan
     if ((millis() - sLastUSDistanceMeasurementMillis) >= aMillisBetweenMeasurements) {
         sLastUSDistanceMeasurementMillis = millis();
 
-        getUSDistanceAsCentimeterWithCentimeterTimeout(aTimeoutCentimeter);
+        getUSDistanceAsCentimeterWithCentimeterTimeout(aTimeoutCentimeter); // sets sUSDistanceCentimeter
         unsigned int tDeltaDistance;
         if (sLastUSDistanceCentimeter > sUSDistanceCentimeter) {
             tDeltaDistance = sLastUSDistanceCentimeter - sUSDistanceCentimeter;
