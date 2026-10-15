@@ -76,6 +76,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
+      # Use latest version from repository for compiling
       - name: Checkout new BlueDisplay library
         uses: actions/checkout@master
         with:
