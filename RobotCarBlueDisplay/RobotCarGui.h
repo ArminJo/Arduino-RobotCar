@@ -20,12 +20,6 @@
 #include "BlueDisplay.h"
 #include "AutonomousDrive.h"
 
-// can be deleted for BlueDisplay library version > 2.1.0
-# if not defined(BUTTON_WIDTH_3_5_POS_2)
-#define BUTTON_WIDTH_3_5_POS_2 (BUTTON_WIDTH_3_5 + BUTTON_DEFAULT_SPACING)
-#define TEXT_SIZE_9   9
-#endif
-
 #define PATH_LENGTH_MAX 100
 
 #define PRINT_MOTOR_INFO_PERIOD_MILLIS 200
@@ -33,7 +27,7 @@
 // a string buffer for BD info output
 extern char sBDStringBuffer[128];
 
-#define REMOTE_DISPLAY_WIDTH           DISPLAY_HALF_VGA_WIDTH   // 320
+#define DISPLAY_WIDTH           DISPLAY_HALF_VGA_WIDTH   // 320
 #define DISPLAY_HEIGHT          DISPLAY_HALF_VGA_HEIGHT // 240
 
 #define HEADER_X                BUTTON_WIDTH_3_5_POS_2 - (TEXT_SIZE_22_WIDTH / 2)
@@ -48,7 +42,7 @@ extern char sBDStringBuffer[128];
 #define DISTANCE_DISPLAY_PERIOD_MILLIS      500
 
 #define US_DISTANCE_MAP_START_X 200
-#define US_DISTANCE_MAP_START_Y 150
+#define US_DISTANCE_MAP_START_Y 130
 
 #define MOTOR_INFO_START_X (BUTTON_WIDTH_6 + 3)
 #define MOTOR_INFO_START_Y (SPEED_SLIDER_SIZE / 2 + 26)
@@ -62,10 +56,10 @@ extern char sBDStringBuffer[128];
 extern uint8_t sCurrentPage;
 
 #if defined(CAR_HAS_US_DISTANCE_SENSOR)
-void showUSDistance();
+void showUSDistance(uint8_t aUSDistanceCentimeter);
 #endif
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-void showIROrTofDistance();
+void showIROrTofDistance(uint8_t aIROrTofDistanceCentimeter);
 #endif
 
 #if defined(ENABLE_PATH_INFO_PAGE)
@@ -100,7 +94,6 @@ void doStartStopDistanceFollowerMode(BDButton *aTheTouchedButton, int16_t aValue
 void doStartStopAutomomousDrive(BDButton *aTheTouchedButton, int16_t aValue);
 void doStartStopTestUser(BDButton *aTheTouchedButton, int16_t aValue);
 
-void doStartStopAutonomousForPathPage(BDButton *aTheTouchedButton, int16_t aValue);
 void setStepMode(uint8_t aStepMode);
 
 // from BTSensorDrivePage
@@ -156,7 +149,6 @@ void startCurrentPage();
 extern BDButton TouchButtonReset;
 
 extern BDButton TouchButtonRobotCarStartStop;
-void setStartStopButtonValue();
 void startStopRobotCar(bool aDoStart);
 void doStartStopRobotCar(BDButton *aTheTouchedButton, int16_t aDoStart);
 void doReset(BDButton *aTheTouchedButton, int16_t aValue);
@@ -182,7 +174,6 @@ extern BDButton TouchButtonCompensationStore;
 
 extern BDSlider SliderSpeed;
 extern int16_t sLastSpeedSliderValue;
-void showSpeedSliderValue();
 
 extern BDSlider SliderSpeedRight;
 extern BDSlider SliderSpeedLeft;
@@ -216,8 +207,6 @@ void initCommonGui(void);
 
 void initRobotCarDisplay(void);
 void readAndShowDistancePeriodically();
-void rotate(int16_t aRotationDegrees, bool inPlace = true);
-void showDistance(int aCentimeter);
 
 void playDoubleTone();
 
@@ -225,8 +214,7 @@ void printMotorValuesPeriodically();
 
 #if defined(SHOW_VOLTAGE_ON_DISPLAY)
 void forceDisplayOfVoltage();
-void displayChangedSupplyVoltageOnce();
-void checkForUnderVoltage();
+void displayChangedSupplyVoltage();
 #endif
 
 void delayAndLoopGUI(unsigned long aDelayMillis);

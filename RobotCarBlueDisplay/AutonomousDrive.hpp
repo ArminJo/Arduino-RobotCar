@@ -2,12 +2,10 @@
  * AutonomousDrive.hpp
  *
  * Contains:
- * fillForwardDistancesInfoPro(): Acquisition of 180 degrees distances by ultrasonic sensor and servo
- * doWallDetection(): Enhancement of acquired data because of lack of detecting flat surfaces by US at angels out of 70 to 110 degree.
  * doBuiltInCollisionAvoiding(): decision where to turn in dependency of the acquired distances.
  * driveAutonomousOneStep(): The loop which handles the start/stop, single step and path output functionality.
  *
- *  Copyright (C) 2016-2022  Armin Joachimsmeyer
+ *  Copyright (C) 2016-2026  Armin Joachimsmeyer
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
  *
@@ -84,23 +82,9 @@ void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
 #if defined(ENABLE_PATH_INFO_PAGE)
         resetPathData();
 #endif
-        clearPrintedForwardDistancesInfos(true); // TODO clear upper right "distance area" too
+        clearPrintedForwardDistancesInfos(true);
         sDoStep = true; // enable next step
         sDriveMode = aDriveMode;
-
-        // decide which button called us
-#if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
-        if (aDriveMode == MODE_COLLISION_AVOIDING_USER) {
-            // User mode always starts in mode SINGLE_STEP
-            setStepMode (MODE_SINGLE_STEP);
-
-        } else
-#endif
-//        if (aDriveMode == MODE_DISTANCE_FOLLOWER) {
-//            DistanceServoWriteAndWaitForStop(90); // reset Servo
-//            TouchButtonDistanceFeedbackMode.drawButton();
-//        }
-
     } else {
         /*
          * Stop autonomous driving.
@@ -112,9 +96,9 @@ void startStopAutomomousDrive(bool aDoStart, uint8_t aDriveMode) {
         }
 #endif
         DistanceServoWriteAndWaitForStop(90);
+        sDoStep = false;
         sDriveMode = MODE_MANUAL_DRIVE;
         RobotCar.stop(STOP_MODE_RELEASE);
-//        TouchButtonDistanceFeedbackMode.removeButton(COLOR16_WHITE);
     }
 
     // manage 3 on off buttons
@@ -138,17 +122,7 @@ int postProcessAndCollisionAvoidingAndDraw() {
 
     postProcessDistances(sCentimetersDrivenPerScan);
 
-    int tNextDegreesToTurn;
-#if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
-    if (sDriveMode == MODE_COLLISION_AVOIDING_USER) {
-        // User provided result
-        tNextDegreesToTurn = doUserCollisionAvoiding();
-    } else {
-        tNextDegreesToTurn = doBuiltInCollisionAvoiding();
-    }
-#else
-    tNextDegreesToTurn = doBuiltInCollisionAvoiding();
-#endif
+    int tNextDegreesToTurn = doBuiltInCollisionAvoiding();
     drawCollisionDecision(tNextDegreesToTurn, sCentimetersDrivenPerScan, false);
     return tNextDegreesToTurn;
 }
@@ -156,7 +130,7 @@ int postProcessAndCollisionAvoidingAndDraw() {
 /*
  * Checks distances and returns degrees to turn
  * Wall degree 0 -> wall parallel to our driving direction, 90 -> wall in front.
- * 0 -> no turn, > 0 -> turn left, < 0 -> turn right, > 360 go back, since not free ahead
+ * 0 -> no turn, > 0 -> turn left, < 0 -> turn right, 360 / MINIMUM_DISTANCE_TOO_SMALL -> go back, since not free ahead
  */
 int doBuiltInCollisionAvoiding() {
     int tDegreeToTurn = 0;
@@ -185,12 +159,12 @@ int doBuiltInCollisionAvoiding() {
              */
             tDegreeToTurn = sForwardDistancesInfo.DegreeOfDistanceGreaterThanThreshold;
         } else {
+            // Here NO index with distance greater than threshold of sCentimetersDrivenPerScan (yellow or green bar)
             if (sForwardDistancesInfo.MaxDistance > sCentimetersDrivenPerScan) {
-//                /*
-//                 * Go to max distance if greater than threshold of sCentimetersDrivenPerScan
-//                 * !!! Currently the same as above
-//                 */
-//                tDegreeToTurn = sForwardDistancesInfo.DegreeOfMaxDistance;
+                /*
+                 * Go to max distance until next scan
+                 */
+                tDegreeToTurn = sForwardDistancesInfo.DegreeOfMaxDistance;
             } else {
                 /*
                  * Distances are all shorter than sCentimetersDrivenPerScan => must turn and go back
@@ -261,7 +235,7 @@ void driveCollisonAvoidingOneStep() {
         }
 
         /*
-         * Here car is (still) moving or just did a rotation or back move and has stooped now
+         * Here car is (still) moving or just did a rotation or back move and has stopped now
          */
 #if defined(USE_ENCODER_MOTOR_CONTROL)
         uint16_t tStepStartDistanceCount = RobotCar.rightCarMotor.EncoderCount; // get count before distance scanning
@@ -295,14 +269,12 @@ void driveCollisonAvoidingOneStep() {
             sCentimetersDrivenPerScan = (millis() - tMillisAtStepStart) / RobotCar.rightCarMotor.MillisPerCentimeter;
 #endif
 
-#if !defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
             if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
                 char tString[11];
                 snprintf_P(tString, sizeof(tString), PSTR("%2d%s"), sCentimetersDrivenPerScan, "cm/scan");
                 BlueDisplay1.drawText(TEXT_SIZE_11_WIDTH, BUTTON_HEIGHT_4_LINE_4 - TEXT_SIZE_11_HEIGHT - TEXT_SIZE_11_DECEND,
                         tString, TEXT_SIZE_11, COLOR16_BLACK, COLOR16_WHITE);
             }
-#endif
         }
 
         /*
@@ -318,7 +290,7 @@ void driveCollisonAvoidingOneStep() {
              * Insert / update last ride in path
              */
             if (sStepMode == MODE_SINGLE_STEP) {
-                insertToPath(CENTIMETER_PER_RIDE * 2, sLastDegreesTurned, true);
+                insertToPath(CENTIMETER_PER_RIDE, sLastDegreesTurned, true); // Better is to insert encoder counts
             } else {
                 // add last driven distance to path
                 insertToPath(RobotCar.rightCarMotor.EncoderCount, sLastDegreesTurned, true);
@@ -344,7 +316,7 @@ void driveCollisonAvoidingOneStep() {
  * Code for distance follower mode
  ***************************************************/
 /*
- * If mode == MODE_STEP_TO_NEXT_TURN, stop if the call of scanForTargetAndPrint() results in a turn.
+ * If mode == MODE_STEP_TO_NEXT_TURN, stop if the call of scanForFollowerTargetDrawLinesAndPrintResult() results in a turn.
  * Start at next step with the turn until the next target has been searched for and found.
  */
 void driveDistanceFollowerModeOneStep() {
@@ -354,19 +326,19 @@ void driveDistanceFollowerModeOneStep() {
             /*
              * We have a pending turn
              */
-            DistanceServoWriteAndWaitForStop(90, false); // reset distance servo direction
-            // Use old distance range. Do a cast, since the values of tRange and rotation match!
-            RobotCar.rotate(sNextRotationDegree, static_cast<turn_direction_t>(sDistanceRange), false, &loopGUI); // do not use slow speed
+            RobotCar.rotate(sNextRotationDegree, TURN_IN_PLACE, false, &loopGUI); // do not use slow speed
             sNextRotationDegree = 0; // reset pending turn
         }
 
         /*
-         * We have NO pending turn no more, scan target at 70, 90 and 110 degree
+         * We have NO pending turn no more, scan target at 70, 90 and 110 degree.
+         * If target ahead is below FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER, then adjust distance.
+         * If target too far or not found, do turn if one of 70 or 110 degree distance is lower than FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER.
          */
 //        clearPrintedForwardDistancesInfos(false); // clear area for next scan results
-        int8_t tNextRotationDegree = scanForTargetAndPrint(FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER - 1); // -1 otherwise timeout is handled as found.
-        unsigned int tForwardCentimeter = sRawForwardDistancesArray[INDEX_TARGET_FORWARD]; // Values between 1 and FOLLOWER_DISTANCE_TIMEOUT_CENTIMETER
-        sDistanceRange = getDistanceRange(tForwardCentimeter);
+        int8_t tNextRotationDegree = scanForFollowerTargetDrawLinesAndPrintResult(FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER);
+        unsigned int tForwardCentimeter = sRawForwardDistancesArray[INDEX_TARGET_FORWARD]; // Values between 1 and FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER
+        sDistanceRange = getDistanceRange(tForwardCentimeter); // determine the direction of the turn
 
         /*
          * Rotate or stop for step if rotation requested. Do not move and scan again.
@@ -381,8 +353,13 @@ void driveDistanceFollowerModeOneStep() {
                 delayAndLoopGUI(50); // to display the values
                 sNextRotationDegree = tNextRotationDegree; // store pending turn
             } else {
-                // Do a cast, since the values of tRange and rotation match!
-                RobotCar.rotate(tNextRotationDegree, static_cast<turn_direction_t>(sDistanceRange), false, &loopGUI);
+                /*
+                 * if DISTANCE_OK we do not move -> TURN_IN_PLACE / DIRECTION_STOP
+                 * if DISTANCE_TO_SMALL we move backward -> TURN_BACKWARD / DIRECTION_BACKWARD
+                 * if DISTANCE_TO_GREAT we move forward -> TURN_FORWARD / DIRECTION_FORWARD
+                 */
+                RobotCar.rotate(tNextRotationDegree,
+                        static_cast<turn_direction_t>(sDistanceRange & DISTANCE_RANGE_TO_TURN_DIRECTION_MASK), false, &loopGUI);
             }
         } else {
 
@@ -394,25 +371,23 @@ void driveDistanceFollowerModeOneStep() {
 
             if (sDistanceRange == DISTANCE_TO_GREAT) {
                 /*
-                 * FORWARD  - Distance (31 to 60) too far
+                 * FORWARD  - Distance (30 to 70) too far
                  * Drive FORWARD with speed proportional to the gap. We start with DEFAULT_START_SPEED_PWM.
-                 * Maximum difference between current and target distance (tCentimeter - FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) is 30.
+                 * Maximum difference between current and target distance (tCentimeter - FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER) is 39.
                  */
-                uint8_t tDifferenceCentimeter = tForwardCentimeter - FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER;
+                uint8_t tDifferenceCentimeter = tForwardCentimeter - FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER;
                 tNewSpeedPWM = PWMDcMotor::getVoltageAdjustedSpeedPWM(DEFAULT_START_SPEED_PWM, sVINVoltage)
-                        + tDifferenceCentimeter * 4; // maximum is + 120 here
+                        + tDifferenceCentimeter * 4; // maximum is + 156 here
                 tDirection = DIRECTION_FORWARD;
 
             } else if (sDistanceRange == DISTANCE_TO_SMALL) {
                 /*
-                 * BACKWARD  - Distance (1 to 19) too close
+                 * BACKWARD  - Distance (1 to 21) too close
                  * Drive with speed proportional to the gap. We start with DEFAULT_DRIVE_SPEED_PWM, to be a bit more agile here.
-                 * Maximum difference between current and target distance is FOLLOWER_DISTANCE_MINIMUM_CENTIMETER / 20.
                  */
-                uint16_t tDifferenceCentimeter = FOLLOWER_DISTANCE_MINIMUM_CENTIMETER - tForwardCentimeter;
+                uint16_t tDifferenceCentimeter = FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER - tForwardCentimeter;
                 tNewSpeedPWM = PWMDcMotor::getVoltageAdjustedSpeedPWM(DEFAULT_DRIVE_SPEED_PWM, sVINVoltage)
-                //                        + tDifferenceCentimeter * 8; // maximum is + 320 here
-                        + tDifferenceCentimeter * 4; // maximum is + 80 here
+                        + tDifferenceCentimeter * 4; // maximum is + 84 here
                 tDirection = DIRECTION_BACKWARD;
             }
 

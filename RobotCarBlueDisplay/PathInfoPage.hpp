@@ -7,8 +7,7 @@
  *
  *  Requires BlueDisplay library.
  *
- *  Created on: 13.05.2019
- *  Copyright (C) 2016-2020  Armin Joachimsmeyer
+ *  Copyright (C) 2019-2026  Armin Joachimsmeyer
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
  *
@@ -24,10 +23,10 @@
 #define _ROBOT_CAR_PATH_INFO_PAGE_HPP
 
 #if defined(ENABLE_PATH_INFO_PAGE)
-#if defined(DEBUG)
-#define LOCAL_DEBUG
+#if defined(INFO)
+#define LOCAL_INFO
 #else
-#define LOCAL_DEBUG // This enables debug output only for this file - only for development
+#define LOCAL_INFO // Always enabled until thoroughly tested
 #endif
 
 BDButton TouchButtonResetPath;
@@ -110,7 +109,7 @@ void resetPathData() {
  * @param aAddEntry if false only values of current entry will be adjusted
  */
 void insertToPath(int aLength, int aDegree, bool aAddEntry) {
-#if defined(LOCAL_DEBUG)
+#if defined(LOCAL_INFO)
     BlueDisplay1.debug("Degree=", aDegree);
     BlueDisplay1.debug("Length=", aLength);
 #endif
@@ -120,7 +119,7 @@ void insertToPath(int aLength, int aDegree, bool aAddEntry) {
     if (aAddEntry) {
         sLastPathDirectionDegree = tLastPathDirectionDegree;
     }
-#if defined(LOCAL_DEBUG)
+#if defined(LOCAL_INFO)
     BlueDisplay1.debug("LastDegree=", tLastPathDirectionDegree);
 #endif
 
@@ -215,8 +214,8 @@ void DrawPath() {
         tYDisplayPos += tYDisplayDelta;
     }
 }
-#if defined(LOCAL_DEBUG)
-#undef LOCAL_DEBUG
+#if defined(LOCAL_INFO)
+#undef LOCAL_INFO
 #endif
 #endif // ENABLE_PATH_INFO_PAGE
 #endif // _ROBOT_CAR_PATH_INFO_PAGE_HPP

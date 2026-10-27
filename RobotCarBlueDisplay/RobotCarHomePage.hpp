@@ -124,18 +124,11 @@ void initHomePage(void) {
  */
 void drawHomePage(void) {
     drawCommonGui();
-    BlueDisplay1.drawText(HEADER_X + TEXT_SIZE_22_WIDTH, 4 + TEXT_SIZE_22_HEIGHT, F("Control"));
-
+    BlueDisplay1.drawText(HEADER_X, 4, F("Robot Car"), TEXT_SIZE_22, COLOR16_BLUE, COLOR16_NO_BACKGROUND);
 #if defined(CAR_HAS_4_WHEELS)
-    char tCarTypeString[] = "4WD";
+    BlueDisplay1.drawText(HEADER_X, 4 + TEXT_SIZE_22_HEIGHT, F("Control 4WD"));
 #else
-    char tCarTypeString[] = "2WD";
-#endif
-#if defined(CAR_HAS_CAMERA)
-    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), 4 + TEXT_SIZE_22_HEIGHT + TEXT_SIZE_11_HEIGHT - 2, tCarTypeString,
-            TEXT_SIZE_11, COLOR16_RED, COLOR16_NO_BACKGROUND);
-#else
-    BlueDisplay1.drawText(HEADER_X + (2 * TEXT_SIZE_22_WIDTH), 4 + (2 * TEXT_SIZE_22_HEIGHT), tCarTypeString);
+    BlueDisplay1.drawText(HEADER_X + TEXT_SIZE_22_WIDTH, 4 + TEXT_SIZE_22_HEIGHT, F("Control 2WD"));
 #endif
 
     TouchButtonRobotCarStartStop.drawButton();
@@ -171,7 +164,7 @@ void drawHomePage(void) {
     SliderDistanceServoPosition.drawSlider();
     SliderUSDistance.drawSlider();
 
-#if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR) && ( ! (defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)))
+#if (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)) && ( ! (defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)))
     SliderIROrTofDistance.drawSlider();
 #endif
 
@@ -190,6 +183,9 @@ void drawHomePage(void) {
     PWMDcMotor::MotorControlValuesHaveChanged = true; // trigger drawing of values
 }
 
+/*
+ * Reset slider positions moved by sub pages
+ */
 void startHomePage(void) {
     TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5);
     TouchButtonInfo.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5);
@@ -198,6 +194,16 @@ void startHomePage(void) {
 //#endif
 #if defined(CAR_HAS_TILT_SERVO) && defined(ENABLE_EEPROM_STORAGE)
     TouchButtonCompensationStore.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5);
+#endif
+#if defined(CAR_HAS_DISTANCE_SENSOR)
+#  if defined(US_DISTANCE_SLIDER_IS_SMALL)
+    SliderUSDistance.setPosition(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_Y_POSITON);
+#  else
+    SliderUSDistance.setPosition(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_Y_POSITON);
+#  endif
+#  if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
+    SliderIROrTofDistance.setPosition(POS_X_RIGHT_OF_THIRD_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_Y_POSITON);
+#  endif
 #endif
     drawHomePage();
 }

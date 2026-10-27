@@ -2,20 +2,17 @@
  *  RobotCarBlueDisplay.cpp
  *
  *  Enables Robot car control with the BlueDisplay app.
- *  Requires the BlueDisplay and PlayRtttl library.
+ *  Requires the PWMMotorControl, BlueDisplay and PlayRtttl library.
  *
  *  Enables autonomous driving of a 2 or 4 wheel car with an Arduino and a Adafruit Motor Shield V2.
  *  To avoid obstacles a HC-SR04 Ultrasonic sensor mounted on a SG90 Servo continuously scans the area.
  *  Manual control is by a GUI implemented with a Bluetooth HC-05 Module and the BlueDisplay library.
  *
- *  Define ENABLE_USER_PROVIDED_COLLISION_DETECTION and overwrite the 2 functions myOwnFillForwardDistancesInfo()
- *  and doUserCollisionAvoiding() to test your own skill.
- *
  *  If Bluetooth is not connected, after TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS (30 seconds) the car starts demo mode until connection or undervoltage.
  *  For Mecanum cars AUX pin LOW selects multiple short instead of long demo.
  *  For cars with distance servo, AUX pin LOW selects simple demo instead of follower demo.
  *
- *  Program size of GUI is 63 percent of 32kByte.
+ *  Program size of GUI part is 63 percent of 32kByte.
  *
  *  Copyright (C) 2016-2026  Armin Joachimsmeyer
  *
@@ -36,9 +33,9 @@
 // 3.1 Added line follower.
 // 3.0 Compatibility to latest BlueDisplay version.
 // 2.0 Improvements and renaming.
-// 2.0 Initial version.
+// 1.0 Initial version.
 /*
- * Timeouts for demo mode and inactivity remainder
+ * Timeouts for demo mode and inactivity reminder
  */
 #define ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS 240000L // move Servo after 4 Minutes of inactivity
 #define TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS    30 // Start demo mode 30 seconds after boot up
@@ -48,7 +45,7 @@
 /*
  * Car configuration
  * For a complete list of available configurations see RobotCarConfigurations.h
- * https://github.com/ArminJo/Arduino-RobotCar/blob/master/src/RobotCarConfigurations.h
+ * https://github.com/ArminJo/Arduino-RobotCar/blob/master/RobotCarBlueDisplay/RobotCarConfigurations.h
  */
 //#define TBB6612_4WD_4AA_BASIC_CONFIGURATION           // China set with TB6612 mosfet bridge + 4 AA.
 //#define TBB6612_4WD_4AA_VIN_CONFIGURATION             // China set with TB6612 mosfet bridge + 4 AA + VIN voltage divider.
@@ -93,7 +90,7 @@
  * Enabling program features dependent on car configuration
  */
 #if defined(CAR_HAS_ENCODERS)
-#define USE_ENCODER_MOTOR_CONTROL   // Enable if by default, if available
+#define USE_ENCODER_MOTOR_CONTROL   // Enable it by default, if available
 #endif
 #if defined(CAR_HAS_MPU6050_IMU)
 #define USE_MPU6050_IMU             // Requires up to 2850 bytes program memory
@@ -116,14 +113,16 @@ Servo TiltServo;
 //#define BD_USE_SIMPLE_SERIAL            // We can use simple serial here, since no Serial.print are active. Saves up to 2480 bytes in BlueDisplay library.
 #endif
 #if defined(VIN_ATTENUATED_INPUT_PIN)
-#define SHOW_VOLTAGE_ON_DISPLAY         // requires  bytes program space
+#define SHOW_VOLTAGE_ON_DISPLAY         // requires 200 bytes program space
+//#define USE_VIN_VOLTAGE_FOR_DISPLAY_OF_PWM_VOLTAGE // use the current voltage instead of the specified voltage for display of PWM voltage; requires 70 bytes program space
 #endif
-#if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT) && (defined(MONITOR_VIN_VOLTAGE) || defined(CAR_HAS_IR_DISTANCE_SENSOR))
+#if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT) && (defined(USE_VIN_VOLTAGE_FOR_DISPLAY_OF_PWM_VOLTAGE) || defined(CAR_HAS_IR_DISTANCE_SENSOR))
 // Here we use the ADC
 // Must be defined before #include "BlueDisplay.hpp"
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100UL // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
-#define PRINT_VOLTAGE_PERIOD_MILLIS         500 // we only print if changed
+#define PRINT_VOLTAGE_PERIOD_MILLIS                  500 // we only print if changed
+#define CHECK_VOLTAGE_PERIOD_MILLIS                 2000 // 2000 is default value
 #define VOLTAGE_TOO_LOW_DELAY_ONLINE_MILLIS         3000 // display VIN every 500 ms for 3 seconds
 #define VOLTAGE_TOO_LOW_DELAY_OFFLINE_MILLIS       10000 // wait for 10 seconds after double beep
 
@@ -135,7 +134,7 @@ Servo TiltServo;
 #define ENABLE_PATH_INFO_PAGE       // Requires up to 1400 bytes of program memory
 #endif
 
-#define ENABLE_DISTANCE_FEEDBACK_MODE_GUI // Switch between "No tone", "Pentatonic" and "Continuous". 130 bytes
+//#define ENABLE_DISTANCE_FEEDBACK_MODE_GUI // Switch between "No tone", "Pentatonic" and "Continuous". Not yet completely implemented, since it does not make much sense if we have a display of distances
 
 /*
  * Values used in distance.hpp
@@ -146,10 +145,6 @@ Servo TiltServo;
 //#define IR_SENSOR_TYPE_100550         // 100 to 550 cm, 18 ms, GP2Y0A710K0F
 //#define TOF_OFFSET_MILLIMETER      10 // The offset measured manually or by calibrateOffset(). Offset = RealDistance - MeasuredDistance
 //#define DISTANCE_SERVO_TRIM_DEGREE  5 // This value is internally added to all servo writes.
-#if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
-int doUserCollisionAvoiding();
-#endif
-
 void loopMotion();
 
 /*
@@ -199,48 +194,6 @@ void handleNotConnectedDemo();
 void checkForCalibration();
 void doAttention();
 
-#if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
-/*************************************************************************************
- * Extend this basic collision detection to test your own skill in autonomous driving
- *
- * Checks distances and returns degree to turn
- * @return 0 -> no turn, >0 -> turn left, <0 -> turn right
- *************************************************************************************/
-#define MINIMUM_DISTANCE_TO_SIDE 21
-#define MINIMUM_DISTANCE_TO_FRONT 35
-
-int doUserCollisionAvoiding() {
-#if defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
-    // If left three distances are all less than 21 centimeter, then turn right.
-    if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT] <= MINIMUM_DISTANCE_TO_SIDE
-            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 1] <= MINIMUM_DISTANCE_TO_SIDE
-            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_LEFT - 2] <= MINIMUM_DISTANCE_TO_SIDE) {
-        return -20;
-        // If right three distances are all less then 21 centimeter than turn left.
-    } else if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT] <= MINIMUM_DISTANCE_TO_SIDE
-            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 1] <= MINIMUM_DISTANCE_TO_SIDE
-            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_RIGHT + 2] <= MINIMUM_DISTANCE_TO_SIDE) {
-        return 20;
-        // If front distance is longer then 35 centimeter than do not turn.
-    } else if (sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_1] >= MINIMUM_DISTANCE_TO_FRONT
-            && sForwardDistancesInfo.ProcessedDistancesArray[INDEX_FORWARD_2] >= MINIMUM_DISTANCE_TO_FRONT) {
-        return 0;
-    } else if (sForwardDistancesInfo.MaxDistance >= MINIMUM_DISTANCE_TO_SIDE) {
-        /*
-         * here front distance is less then 35 centimeter:
-         * go to max side distance
-         */
-        return sForwardDistancesInfo.DegreeOfMaxDistance;
-    } else {
-        // Turn backwards.
-        return 180;
-    }
-#else
-    return 0;
-#endif
-}
-#endif
-
 /*
  * Start of robot car control program
  */
@@ -258,6 +211,15 @@ void setup() {
 #endif
 #if defined(CAR_HAS_LASER) && (LASER_OUT_PIN != LED_BUILTIN)
     pinMode(LASER_OUT_PIN, OUTPUT);
+#endif
+#if defined(US_DISTANCE_SENSOR_ENABLE_PIN) // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
+    pinMode(US_DISTANCE_SENSOR_ENABLE_PIN, INPUT_PULLUP);
+#endif
+#if defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) // If this pin is connected to ground, enable distance feedback tone
+    pinMode(DISTANCE_TONE_FEEDBACK_ENABLE_PIN, INPUT_PULLUP);
+#endif
+#if defined(LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN) // If this pin is connected to ground, enable following a white line
+    pinMode(LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN, INPUT_PULLUP);
 #endif
 
     tone(BUZZER_PIN, 2200, 50); // Booted
@@ -280,7 +242,7 @@ void setup() {
 #endif
 
     // Must be after RobotCar.init, since it tries to stop motors in connect callback
-    setupGUI(); // this enables output by BlueDisplay1 and lasts around 100 milliseconds
+    setupGUI(); // this enables output by BlueDisplay1 and lasts around 50 to 150 ms if still connected, otherwise up to 1500 ms
 
     tone(BUZZER_PIN, 2200, 50); // GUI initialized (if connected)
 
@@ -399,12 +361,18 @@ void loop() {
 
     if (!BlueDisplay1.isConnectionEstablished()) {
         /*
-         * After 30 seconds of being disconnected, run the demo.
+         * After 30 seconds of being disconnected, run the demo if not USB powered.
          * Runs forever and returns only if connection is established
          */
+#if defined(ADC_UTILS_ARE_AVAILABLE)
+        if (!isUSBPowered()) {
+            handleNotConnectedDemo();
+        }
+#else
         handleNotConnectedDemo();
+#endif
 
-    } else if (sMillisOfLastReceivedBDEvent + ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS < millis()) {
+    } else if (millis() - sMillisOfLastReceivedBDEvent > ATTENTION_AFTER_LAST_BD_COMMAND_MILLIS) {
         /*
          * After 4 minutes of user inactivity at connection, play double tone and make noise by scanning with US Servo and then repeat it every 2. minute
          */
@@ -444,7 +412,7 @@ void checkForCalibration() {
     if (doCalibration) {
         startStopRobotCar(false); // Reset also button
 
-        // first get EEPROM values, in order to not work with the values we accidently set before in a former calibration
+        // first get EEPROM values, in order to not work with the values we accidentally  set before in a former calibration
         RobotCar.readCarValuesFromEeprom();
         displayRotationValues();
 #  if defined(VIN_ATTENUATED_INPUT_PIN)
@@ -477,21 +445,13 @@ void doSimpleDemo() {
 }
 
 /*
- * After 30 seconds of being disconnected, start autonomous drive or the demo which is in turn repeated after 2 minutes.
+ * After 30 seconds of being disconnected, start autonomous drive or the demo which is in turn repeated after 1 or 2 minutes.
  * Do not run it if the car is connected to USB (e.g. for programming or debugging), which can be tested only for a Li-ion supply :-(.
  * If AUX_PIN is LOW, do short demo, otherwise do all demo moves in a row.
+ * Blocking call, returns only if connected / BlueDisplay1.isConnectionEstablished()
  */
 void handleNotConnectedDemo() {
-    if (millis() == TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS) {
-#if defined(ADC_UTILS_ARE_AVAILABLE)
-        if (isUSBPowered()) {
-            INFO_PRINTLN(F("Timeout and USB powered -> skip demo"));
-            playDoubleTone();
-            // Here we are for programming or debugging -> enable periodic attention
-            return;
-        }
-#endif
-
+    if (millis() >= TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS) {
         /*
          * Timeout just reached and not USB powered, play melody and start demo or autonomous drive
          */
@@ -523,7 +483,7 @@ void handleNotConnectedDemo() {
             if (tDoLongDemo) {
                 delayAndLoopGUI(TIMEOUT_BETWEEN_SHORT_DEMOS_MILLIS); // wait additional 1 minutes before next long demo and check for undervoltage and connection
             }
-            break; // skip doSimpleDemo() below
+            continue; // skip doSimpleDemo() below
 #elif defined(CAR_HAS_LINE_FOLLOWER_SENSOR) // has precedence before autonomous drive demo
 #  if defined(AUX_PIN)
             // If AUX_PIN is LOW, do simple demo every minute, otherwise start line follower mode and wait 2 minutes
@@ -546,12 +506,15 @@ void handleNotConnectedDemo() {
             bool tDoDistanceFollower = true;
 #  endif
             if (tDoDistanceFollower) {
-                if(!sDoStep) {
+                if (!sDoStep) {
                     INFO_PRINTLN(F("start distance follower"));
                     startStopAutomomousDrive(true, MODE_DISTANCE_FOLLOWER); // start distance follower
                 }
-                loopGUI();
-                loopMotion();
+                do {
+                    // do distance follower forever and wait for connection and stop command
+                    loopGUI();
+                    loopMotion();
+                } while (sDoStep);
             } else
 #endif
             {
@@ -612,6 +575,10 @@ void playRandomMelody() {
     sPlayMelody = false;
 }
 
+/*
+ * Not used yet
+ * Serves as a demo for generating tone by using motor coils
+ */
 void playTone(unsigned int aFrequency, unsigned long aDuration = 0) {
 #if defined(USE_MOTOR_FOR_MELODY) && defined(LEFT_MOTOR_FORWARD_PIN)
     OCR2B = 0;

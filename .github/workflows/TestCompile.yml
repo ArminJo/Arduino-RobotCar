@@ -35,6 +35,7 @@ jobs:
           - arduino:avr:uno|TimeOfFlight
           - arduino:avr:uno|BreadboardFull
           - arduino:avr:uno|Mecanum
+          - arduino:avr:uno|LineFollower
 
         include:
           - arduino-boards-fqbn: arduino:avr:uno
@@ -67,6 +68,13 @@ jobs:
                 -DMECANUM_BASIC_CONFIGURATION
                 -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -DUS_SENSOR_SUPPORTS_1_PIN_MODE
+                -mcall-prologues # reduces size by 870 bytes
+
+          - arduino-boards-fqbn: arduino:avr:uno|LineFollower # Uno board with motor shield + 4 wheels
+            build-properties:
+              RobotCarBlueDisplay:
+                -DMOTOR_SHIELD_4WD_FULL_AND_LINE_FOLLOWER_CONFIGURATION
+                -DBLUETOOTH_BAUD_RATE=BAUD_115200
                 -mcall-prologues # reduces size by 870 bytes
 
       # Do not cancel all jobs / architectures if one job fails

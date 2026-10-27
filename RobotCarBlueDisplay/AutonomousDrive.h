@@ -18,10 +18,10 @@
 #ifndef _AUTONOMOUS_DRIVE_H
 #define _AUTONOMOUS_DRIVE_H
 
-// These are the default values as defined in Distances.h
-#define FOLLOWER_DISTANCE_MINIMUM_CENTIMETER            22 // If measured distance is less than this value, go backwards
-#define FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER            30 // If measured distance is greater than this value, go forward
-#define FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER     70 // Do not accept target with distance greater than this value
+// These values should be modified here. Currently they are the default values as defined in Distances.h.
+#define FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER         22 // If measured distance is less than this value, go backwards
+#define FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER         30 // If measured distance is greater than this value, go forward
+#define FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER  70 // Do not accept target with distance greater than this value
 #define FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER   100 // Do not measure and display distances greater than this
 
 /*
@@ -31,17 +31,15 @@
 #define MODE_COLLISION_AVOIDING_BUILTIN 1
 #define MODE_DISTANCE_FOLLOWER          2
 #define MODE_LINE_FOLLOWER              3
-#if defined(ENABLE_USER_PROVIDED_COLLISION_DETECTION)
-#define MODE_COLLISION_AVOIDING_USER    4 // like MODE_COLLISION_AVOIDING_BUILTIN but use doUserCollisionAvoiding()
-#endif
+
 extern uint8_t sDriveMode;
 
 /*
- * Step modes for MODE_AUTONOMOUS_DRIVE
+ * Step modes
  */
 #define MODE_CONTINUOUS         0
 #define MODE_STEP_TO_NEXT_TURN  1 // stop before a turn. Not supported for line follower (treated as continuous)
-#define MODE_SINGLE_STEP        2 // stop after CENTIMETER_PER_RIDE_2
+#define MODE_SINGLE_STEP        2 // for MODE_COLLISION_AVOIDING_BUILTIN stop after CENTIMETER_PER_RIDE
 extern uint8_t sStepMode;
 extern bool sDoStep;
 

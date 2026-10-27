@@ -54,7 +54,7 @@
 //#define MOTOR_SHIELD_4WD_FULL_AND_LINE_FOLLOWER_CONFIGURATION  // Motor Shield + encoder + 2 Li-ion + servo head down + IR distance + TCRT 5000 3-channel sensor
 //#define BREADBOARD_4WD_FULL_CONFIGURATION             // Nano Breadboard version with Arduino NANO, TB6612 mosfet bridge, pan/tilt servo, MPU6050, camera and laser
 //#define MECANUM_BASIC_CONFIGURATION                   // Nano Breadboard version with Arduino NANO, TB6612 mosfet bridge and 4 mecanum wheels
-//#define MECANUM_DISTANCE_CONFIGURATION                // Nano Breadboard version with Arduino NANO, 2 TB6612 mosfet bridges and 4 mecanum wheels + US distance + servo
+//#define MECANUM_US_DISTANCE_CONFIGURATION             // Nano Breadboard version with Arduino NANO, 2 TB6612 mosfet bridges and 4 mecanum wheels + US distance + servo
 //#define CAR_IS_ESP32_CAM_BASED                        // Car controlled by an ESP32-CAM like https://github.com/ArminJo/ESP32-Cam-Sewer-inspection-car
 //////////////////////////////////////////////////////
 //
@@ -68,7 +68,7 @@
 //#define US_SENSOR_SUPPORTS_1_PIN_MODE   // Activate it, if you use modified HC-SR04 modules or HY-SRF05 ones.
 //                                           Modify HC-SR04 by connecting 10kOhm between echo and trigger and then use only trigger pin.
 //#define CAR_HAS_IR_DISTANCE_SENSOR      // A Sharp GP2Y0A21YK / 1080 IR distance sensor is mounted.
-//#define CAR_HAS_3_IR_FOR_LINE_FOLLOWER  // A CTRT5000 3 channel IR track sensor is mounted.
+//#define CAR_HAS_3_IR_FOR_LINE_FOLLOWER  // A TCRT5000 3 channel IR track sensor is mounted.
 //#define CAR_HAS_TOF_DISTANCE_SENSOR     // A VL53L1X TimeOfFlight distance sensor is mounted.
 //#define CAR_HAS_DISTANCE_SERVO          // Distance sensor is mounted on a pan servo (default for most China smart cars). 0 is right, 180 is left.
 //#define CAR_HAS_ENCODERS                // 2 slot type slot-type photo interrupter are mounted and connected with pin 2 and 3.
@@ -120,8 +120,8 @@
 //#define NO_PATH_INFO_PAGE               // Saves up to 1400 bytes
 //#define NO_SERIAL_OUTPUT                // Saves up to 2886 bytes
 #define NO_RTTTL_FOR_CAR                // Saves up to 3654 bytes
-#define L298_IR_DISTANCE_CONFIGURATION
-#define CONFIG_NAME         "2WD + L298 + 2 Li-ion + IR distance" // BASIC_CONFIG_NAME and CONFIG_NAME is printed by printConfigInfo()
+#define L298_2WD_2LI_ION_BASIC_CONFIGURATION
+#define CONFIG_NAME         " + IR distance + VIN divider + MPU6050" // BASIC_CONFIG_NAME and CONFIG_NAME is printed by printConfigInfo()
 #endif
 
 /*
@@ -179,7 +179,7 @@
  ********************************/
 #if defined(TBB6612_4WD_2LI_ION_FULL_CONFIGURATION)
 #define CAR_HAS_VIN_VOLTAGE_DIVIDER     // VIN/11 at A2, e.g. 1MOhm to VIN, 100kOhm to ground. Required to show and monitor (for undervoltage) VIN voltage.
-#define CAR_HAS_MPUMPU6050 breakout board connected by I2C for support of precise turning. Connectors point to the rear.
+#define CAR_HAS_MPU6050_IMU             // MPU6050 breakout board connected by I2C for support of precise turning. Connectors point to the rear.
 #define TBB6612_4WD_2LI_ION_BASIC_CONFIGURATION
 #define CONFIG_NAME         " + VIN divider + MPU6050"
 #endif
@@ -443,7 +443,7 @@
  * Lafvin 2WD model using L298 bridge. Uno board has series diode at power jack connector + 4 AA batteries.
  * https://de.aliexpress.com/item/32816490316.html
  */
-#if defined(L298_4WD_4AA_BASIC_CONFIGURATION)
+#if defined(L298_2WD_4AA_BASIC_CONFIGURATION)
 #define USE_L298_BRIDGE                 // Activate this, if you use a L298 bridge, which has higher losses than a recommended mosfet bridge like TB6612.
 #define CAR_HAS_US_DISTANCE_SENSOR      // A HC-SR04 ultrasonic distance sensor is mounted (default for most China smart cars)
 #define CAR_HAS_DISTANCE_SERVO          // Distance sensor is mounted on a pan servo (default for most China smart cars)
@@ -477,26 +477,6 @@
 #  if !defined(BASIC_CONFIG_NAME)
 #define BASIC_CONFIG_NAME   "2WD + L298 + 4 AA"
 #  endif
-#endif
-
-/*
- * Zhiyi ODM OEM Flexible And Lightweight Tank Track Robot Cars U-bot Rock Crawler RC Car V2.0 For Arduino
- * http://zhiyi.ltd/product_34156.html
- */
-#if defined(ZYC0053_CONFIGURATION)
-#define RIGHT_MOTOR_PWM_PIN         5 // ENB - Must be PWM capable
-#define LEFT_MOTOR_PWM_PIN          6 // ENA - Must be PWM capable
-
-#define CAR_HAS_LINE_FOLLOWER_SENSOR
-#define LINE_FOLLOWER_LEFT_SENSOR_PIN   A0
-#define LINE_FOLLOWER_MID_SENSOR_PIN    A1
-#define LINE_FOLLOWER_RIGHT_SENSOR_PIN  A2
-#define TRIGGER_OUT_PIN            A4 // "URF 01 +" Connector on the Arduino Sensor Shield
-#define ECHO_IN_PIN                A5
-#define PAN_SERVO_PIN               3
-#define IR_RECEIVE_PIN              2
-#define BUZZER_PIN                 11
-
 #endif
 
 /*

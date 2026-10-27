@@ -3,7 +3,7 @@
  *
  *  Contains miscellaneous convenience utility functions for the robot cars.
  *
- *  Copyright (C) 2022-2024  Armin Joachimsmeyer
+ *  Copyright (C) 2022-2026  Armin Joachimsmeyer
  *
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
  *
@@ -33,6 +33,7 @@
  * DEBUG
  * USE_BLUE_DISPLAY_GUI
  * PRINT_VOLTAGE_PERIOD_MILLIS
+ * CHECK_VOLTAGE_PERIOD_MILLIS
  * VIN_ATTENUATED_INPUT_PIN
  * VOLTAGE_DIVIDER_DIVISOR
  * CAR_HAS_VIN_VOLTAGE_DIVIDER
@@ -46,11 +47,11 @@
  * VIN_VOLTAGE_CORRECTION
  * ADC_INTERNAL_REFERENCE_MILLIVOLT
  * TIMEOUT_BEFORE_DEMO_MODE_STARTS_MILLIS
- * FOLLOWER_DISTANCE_MINIMUM_CENTIMETER
- * FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER
+ * FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER
+ * FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER
  * US_DISTANCE_SENSOR_ENABLE_PIN
  * DISTANCE_TONE_FEEDBACK_ENABLE_PIN
- * DISTANCE_FEEDBACK_MODE
+ * ENABLE_DISTANCE_FEEDBACK_MODE_GUI
  * USE_ADAFRUIT_MOTOR_SHIELD
  * CAR_HAS_4_MECANUM_WHEELS
  * FRONT_RIGHT_MOTOR_FORWARD_PIN
@@ -72,15 +73,18 @@ bool doCalibration = false;
 #if !defined(PRINT_VOLTAGE_PERIOD_MILLIS)
 #define PRINT_VOLTAGE_PERIOD_MILLIS 2000
 #endif
+#if !defined(CHECK_VOLTAGE_PERIOD_MILLIS)
+#define CHECK_VOLTAGE_PERIOD_MILLIS 2000
+#endif
 
+#include "ADCUtils.hpp"
 #if defined(VIN_ATTENUATED_INPUT_PIN)
 #  if !defined(VOLTAGE_DIVIDER_DIVISOR)
 #define VOLTAGE_DIVIDER_DIVISOR   11.0  // VIN/11 by 1MOhm to VIN and 100kOhm to ground.
 #  endif
-#include "ADCUtils.hpp"
 uint16_t sLastVINRawSum; // Sum of NUMBER_OF_VIN_SAMPLES raw readings of ADC, used to determine if voltage has changed and must be displayed.
 #endif // defined(VIN_ATTENUATED_INPUT_PIN)
-float sVINVoltage = FULL_BRIDGE_INPUT_MILLIVOLT / 1000; // Set default value for later use. Is used a parameter for getVoltageAdjustedSpeedPWM
+float sVINVoltage = FULL_BRIDGE_INPUT_MILLIVOLT / 1000.0; // Set default value for later use. Is used a parameter for getVoltageAdjustedSpeedPWM
 uint32_t sMillisOfLastVCCOrVINCheck;
 uint16_t sLastVCCVoltageMillivolt;
 bool sVoltageHasChanged = false;
@@ -92,7 +96,6 @@ uint8_t sLowVoltageCount = 0;
 
 // This block must be located after the includes of other *.hpp files
 //#define LOCAL_INFO  // This enables info output only for this file
-#define LOCAL_DEBUG // This enables debug output only for this file - only for development
 #include "LocalDebugLevelStart.h"
 
 //uint32_t sMillisOfLastAttention = 0;                            // millis() of last doAttention() or doWave()
@@ -198,20 +201,18 @@ void printProgramOptions(Print *aSerial) {
     aSerial->println(F("Run distance follower demo after " STR(TIMEOUT_BEFORE_DEMO_MODE_STARTS_SECONDS) " s"));
     aSerial->println(
             F(
-                    "Keep distance between " STR(FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) " and " STR(FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) " cm. Scan for target up to " STR(FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER) " cm"));
+                    "Keep distance between " STR(FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER) " and " STR(FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER) " cm. Scan for target up to " STR(FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER) " cm"));
 #endif
 #if defined(US_DISTANCE_SENSOR_ENABLE_PIN) // If this pin is connected to ground, use the US distance sensor instead of the IR distance sensor
-    pinMode(US_DISTANCE_SENSOR_ENABLE_PIN, INPUT_PULLUP);
-    printConfigPinInfo(aSerial, US_DISTANCE_SENSOR_ENABLE_PIN, F("US instead of IR distance input"));
+    printConfigPinInfo(aSerial, US_DISTANCE_SENSOR_ENABLE_PIN, F("US instead of IR distance input selector pin"));
 #endif
     // No pin required, if we can control it by GUI
 #if defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) && !defined(ENABLE_DISTANCE_FEEDBACK_MODE_GUI)// If this pin is connected to ground, enable distance feedback
-    pinMode(DISTANCE_TONE_FEEDBACK_ENABLE_PIN, INPUT_PULLUP);
-    printConfigPinInfo(aSerial, DISTANCE_TONE_FEEDBACK_ENABLE_PIN, F("distance feedback"));
+    printConfigPinInfo(aSerial, DISTANCE_TONE_FEEDBACK_ENABLE_PIN, F("distance feedback selector pin"));
 #endif
-#if defined(LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN) && defined(CAR_HAS_LINE_FOLLOWER_SENSOR)// If this pin is connected to ground, enable following a white line
+#if defined(LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN) && defined(CAR_HAS_LINE_FOLLOWER_SENSOR) // If this pin is connected to ground, enable following a white line
     pinMode(LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN, INPUT_PULLUP);
-    printConfigPinInfo(aSerial, LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN, F("following white line"));
+    printConfigPinInfo(aSerial, LINE_FOLLOWER_ENABLE_WHITE_LINE_PIN, F("following white line selector pin"));
 #endif
 }
 
@@ -263,7 +264,7 @@ bool isVINProvided() {
 #endif
 
 /*
- * Read 10 samples covering a complete PWM period
+ * Read NUMBER_OF_VIN_SAMPLES (10 or 20) samples covering a complete PWM period
  * Sets sVINVoltage, sVoltageHasChanged and sLastVINRawSum
  */
 void readVINVoltage() {
@@ -276,7 +277,7 @@ void readVINVoltage() {
 #endif
     /*
      * Here VIN is the only ADC channel we convert.
-     * Get 10 samples lasting 1030 us, which is almost the PWM period of 1024 us.
+     * Get NUMBER_OF_VIN_SAMPLES samples covering the PWM period of analogWrite() for the motors.
      */
     uint16_t tVINRawSum = readADCChannelMultiSamplesWithReference(VIN_ATTENUATED_INPUT_CHANNEL, INTERNAL, NUMBER_OF_VIN_SAMPLES); // 10 samples
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR)
@@ -293,7 +294,6 @@ void readVINVoltage() {
 #endif
 
 // assume resistor network of 1MOhm / 100kOhm (divider by 11)
-// tVIN * 0,01182795
 #if defined(VIN_VOLTAGE_CORRECTION)
     // we have a diode (requires 0.8 to 0.9 volt) between LiIon and VIN
         sVINVoltage = (tVINRawSum * ((VOLTAGE_DIVIDER_DIVISOR * (ADC_INTERNAL_REFERENCE_MILLIVOLT / (1000.0 * NUMBER_OF_VIN_SAMPLES))) / 1024)) + VIN_VOLTAGE_CORRECTION;
@@ -305,7 +305,7 @@ void readVINVoltage() {
     sVINVoltage = tVINRawSum
             * ((VOLTAGE_DIVIDER_DIVISOR * (ADC_INTERNAL_REFERENCE_MILLIVOLT / 1000.0)) / (1024.0 * NUMBER_OF_VIN_SAMPLES));
 #endif
-    // resolution is about 5 mV and we display in a 10 mV resolution -> compare with (2 * NUMBER_OF_VIN_SAMPLES)
+    // resolution is about 11 mV and we display in a 10 mV resolution -> compare with (2 * NUMBER_OF_VIN_SAMPLES)
     if (uintDifferenceAbs(sLastVINRawSum, tVINRawSum) > (2 * NUMBER_OF_VIN_SAMPLES)) {
         sLastVINRawSum = tVINRawSum;
         sVoltageHasChanged = true;
@@ -389,7 +389,7 @@ void readVCCOrVINVoltage() {
  * Undervoltage for VIN if < 2 * 3.45 V and > 5.5 V. If VIN < 5.5 V we are USB powered :-).
  */
 bool isUnderVoltage() {
-#if defined(VIN_ATTENUATED_INPUT_PIN)
+#if defined(VIN_ATTENUATED_INPUT_PIN) && defined(VIN_2_LI_ION)
     return (VIN_VOLTAGE_THRESHOLD_FOR_USB_POWERED_DETECTION < sVINVoltage) && (sVINVoltage < VOLTAGE_TWO_LI_ION_LOW_THRESHOLD);
 #elif defined(ADC_UTILS_ARE_AVAILABLE)
     return (sVCCVoltageMillivolt < VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT);
@@ -400,7 +400,7 @@ bool isUnderVoltage() {
 
 void readAndCheckVoltagePeriodically() {
     uint32_t tMillis = millis();
-    if (tMillis - sMillisOfLastVCCOrVINCheck >= PRINT_VOLTAGE_PERIOD_MILLIS) {
+    if (tMillis - sMillisOfLastVCCOrVINCheck >= CHECK_VOLTAGE_PERIOD_MILLIS) {
         sMillisOfLastVCCOrVINCheck = tMillis;
         /*
          * 1. Read voltage
@@ -482,7 +482,7 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
 #endif
     while (RobotCar.updateMotors()) { // wait for 360 / 720 degree, then updateMotors() will return false
 #if defined(USE_BLUE_DISPLAY_GUI)
-        if (!IS_STOP_REQUESTED) {
+        if (IS_STOP_REQUESTED) {
 #else
         if (IRDispatcher.requestToStopReceived) {
 #endif
@@ -491,7 +491,7 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
              * Here we received a stop request from user. The stop command doStop() was NOT executed before, it is scheduled.
              */
 #if defined(USE_ENCODER_MOTOR_CONTROL)
-            uint16_t tNewMillimeterPer256Degree = RobotCar.rightCarMotor.getDistanceMillimeter();
+            uint16_t tNewMillimeterPer256Degree = (RobotCar.rightCarMotor.getDistanceMillimeter() * 256L) / 360;
 #else
             unsigned long tMillisPer360Degree = millis() - tStartMillis;
 #  if defined(LOCAL_INFO) && !defined(USE_BLUE_DISPLAY_GUI)
@@ -553,11 +553,11 @@ bool calibrateRotation(turn_direction_t aTurnDirection) {
 //}
 
 /*
- * Drive the car 2 times forward and and 2 times backward, each for a full wheel turn, to check the current values set for driving distance.
+ * Drive the car 2 times forward and 2 times backward, each for a full wheel turn, to check the current values set for driving distance.
  */
 void testDriveTwoTurnsBothDirections() {
 #define NUMBER_OF_TEST_DRIVES       2
-    INFO_PRINTLN(F("Move the wheels 2x a full turn i.e. " STR(DEFAULT_CIRCUMFERENCE_MILLIMETER) " mm, both directions"));
+    INFO_PRINTLN(F("Move the wheels 2x a full turn of " STR(DEFAULT_CIRCUMFERENCE_MILLIMETER) " mm, both directions"));
     for (int i = 0; i < NUMBER_OF_TEST_DRIVES; ++i) {
         RobotCar.goDistanceMillimeter(DEFAULT_CIRCUMFERENCE_MILLIMETER);
         DELAY_AND_RETURN_IF_STOP(500);
@@ -571,13 +571,13 @@ void testDriveTwoTurnsBothDirections() {
 }
 
 /*
- * Drive the car for 2 times 1/8, wheel turn, then 1/ and 1/2 wheel turn, then a complete turn. First forward, then backward.
+ * Drive the car for 2 times 1/8, wheel turn, then 1/4 and 1/2 wheel turn, then a complete turn. First forward, then backward.
  * If distance driving formula and values are correct, this results in 4 full wheel turns ending at the start position.
  */
 void testDriveTwoTurnsIn5PartsBothDirections() {
     uint8_t tDirection = DIRECTION_FORWARD;
     INFO_PRINTLN(
-            F("Move the wheels 2x 1/8 + 1/4 + 1/2 + 1 turn i.e. " STR(2 * DEFAULT_CIRCUMFERENCE_MILLIMETER)" mm, both directions"));
+            F("Move the wheels 2x 1/8 + 1/4 + 1/2 + 1 turn i.e. 2x " STR(DEFAULT_CIRCUMFERENCE_MILLIMETER)" mm, both directions"));
     for (int i = 0; i < 2; ++i) {
         RobotCar.goDistanceMillimeter(DEFAULT_CIRCUMFERENCE_MILLIMETER / 8, tDirection);
         DELAY_AND_RETURN_IF_STOP(2000);
@@ -596,48 +596,49 @@ void testDriveTwoTurnsIn5PartsBothDirections() {
 
 /*
  * Check the current EEPROM stored values for rotation.
- * - Rotate left forward by 9 times 10 degree -> 90 degree.
- * - Rotate right forward by 90 degree -> car has its initial direction but moved left forward.
- * - Do the same the other direction i.e. first right, then left.
- * - Do the same again but rotate in place.
+ * - 1. Rotate left forward by 9 times 10 degree -> 90 degree.
+ * - 2. Rotate right forward by 90 degree -> car has its initial direction but moved forward.
+ * - 3. + 4. Do 1 + 2 backward and the other direction i.e. first right, then left.
+ * - Do 1 to 4 but rotate in place.
  */
 void testRotation() {
 #define DEGREE_OF_TEST_ROTATION    10
 #define NUMBER_OF_TEST_ROTATIONS    9 // to have 90 degree at 9 times 10 degree rotation
 
-    INFO_PRINTLN(F("Rotate forward 9 times for 10 degree"));
+    INFO_PRINTLN(F("Rotate left forward 9 times for 10 degree"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(DEGREE_OF_TEST_ROTATION, TURN_FORWARD);
         DELAY_AND_RETURN_IF_STOP(500);
     }
 
-// rotate back
+// rotate other direction to start degree
     DELAY_AND_RETURN_IF_STOP(1000);
-    INFO_PRINTLN(F("Rotate back for 90 degree"));
+    INFO_PRINTLN(F("Rotate right forward for 90 degree"));
     RobotCar.rotate(-(DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_FORWARD);
     DELAY_AND_RETURN_IF_STOP(3000);
 
-    INFO_PRINTLN(F("Rotate backwards"));
+    INFO_PRINT(F("Rotate backward right"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
-        RobotCar.rotate(-DEGREE_OF_TEST_ROTATION, TURN_FORWARD);
+        RobotCar.rotate(-DEGREE_OF_TEST_ROTATION, TURN_BACKWARD);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-// rotate back
+// rotate other direction to start degree
+    INFO_PRINTLN(F(" and left"));
     DELAY_AND_RETURN_IF_STOP(1000);
-    RobotCar.rotate((DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_FORWARD);
+    RobotCar.rotate((DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_BACKWARD);
     DELAY_AND_RETURN_IF_STOP(2000);
 
-    INFO_PRINTLN(F("Rotate in place"));
+    INFO_PRINTLN(F("Rotate in place left and right"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(DEGREE_OF_TEST_ROTATION, TURN_IN_PLACE);
         DELAY_AND_RETURN_IF_STOP(500);
     }
-// rotate back
+// rotate other direction to start degree
     DELAY_AND_RETURN_IF_STOP(1000);
     RobotCar.rotate(-(DEGREE_OF_TEST_ROTATION * NUMBER_OF_TEST_ROTATIONS), TURN_IN_PLACE);
     DELAY_AND_RETURN_IF_STOP(2000);
 
-    INFO_PRINTLN(F("Rotate in place backwards"));
+    INFO_PRINTLN(F("Rotate in place right and left"));
     for (int i = 0; i < NUMBER_OF_TEST_ROTATIONS; ++i) {
         RobotCar.rotate(-DEGREE_OF_TEST_ROTATION, TURN_IN_PLACE);
         DELAY_AND_RETURN_IF_STOP(500);

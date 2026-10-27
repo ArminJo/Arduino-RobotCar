@@ -216,7 +216,7 @@ float getTemperature(void) __attribute__ ((deprecated ("Renamed to getCPUTempera
 
 bool isVCCUSBPowered();
 bool isVCCUSBPowered(Print *aSerial);
-bool isVCCUndervoltageMultipleTimes();
+bool isVCCUndervoltageMultipleTimes(Print *aSerial);
 void resetCounterForVCCUndervoltageMultipleTimes();
 bool isVCCUndervoltage();
 bool isVCCEmergencyUndervoltage();

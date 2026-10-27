@@ -47,14 +47,14 @@ extern Servo DistanceServo;     // The pan servo instance for distance sensor
 /*
  * Default distances for the behavior of the follower
  */
-#if !defined(FOLLOWER_DISTANCE_MINIMUM_CENTIMETER)
-#define FOLLOWER_DISTANCE_MINIMUM_CENTIMETER            22 // If measured distance is less than this value, go backwards
+#if !defined(FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER)
+#define FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER         22 // If measured distance is less than this value, go backwards
 #endif
-#if !defined(FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER)
-#define FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER            30 // If measured distance is greater than this value, go forward
+#if !defined(FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER)
+#define FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER         30 // If measured distance is greater than this value, go forward
 #endif
-#if !defined(FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER)
-#define FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER     70 // Do not accept target with distance greater than this value
+#if !defined(FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER)
+#define FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER  70 // Do not accept target with distance greater than this value
 #endif
 #if !defined(FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER)
 #  if defined(USE_BLUE_DISPLAY_GUI)
@@ -66,11 +66,19 @@ extern Servo DistanceServo;     // The pan servo instance for distance sensor
 
 #include "PWMDcMotor.h" // for DIRECTION_STOP etc.
 typedef enum distance_range {
+    /*
+     * The strange mapping is because of the movement which follows as a result of the distance
+     * if DISTANCE_OK we do not move -> TURN_IN_PLACE / DIRECTION_STOP
+     * if DISTANCE_TO_SMALL we move backward -> TURN_BACKWARD / DIRECTION_BACKWARD
+     * if DISTANCE_TO_GREAT we move forward -> TURN_FORWARD / DIRECTION_FORWARD
+     * if DISTANCE_TARGET_NOT_FOUND we do not move -> mask it to TURN_IN_PLACE / DIRECTION_STOP
+     */
     DISTANCE_OK = DIRECTION_STOP,           // 0 22 - 29 cm
-    DISTANCE_TO_SMALL = DIRECTION_FORWARD,  // 1 0 - 21 cm
-    DISTANCE_TO_GREAT = DIRECTION_BACKWARD, // 2 30 - 59 cm
-    DISTANCE_TARGET_NOT_FOUND = 3           // 3 60 - 120 cm
+    DISTANCE_TO_GREAT = DIRECTION_FORWARD,  // 1 30 - 70 cm
+    DISTANCE_TO_SMALL = DIRECTION_BACKWARD, // 2 0 - 21 cm
+    DISTANCE_TARGET_NOT_FOUND = 4           // 4 70 - 120 cm // can be masked easily
 } distance_range_t;
+#define DISTANCE_RANGE_TO_TURN_DIRECTION_MASK   0x03 // map 4 to 0
 distance_range_t getDistanceRange(uint8_t aCentimeter);
 extern const char RangeCharacterArray[];
 void printDistanceRangeCharacter(Print *aSerial, distance_range_t aRange);
@@ -95,9 +103,9 @@ extern uint8_t sDistanceFeedbackMode;
  * Different result types acquired at one scan
  */
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-#define DISTANCE_SOURCE_MODE_US         0 // Take just US value
-#define DISTANCE_SOURCE_MODE_MINIMUM    1 // Take the minimum of the US and IR or TOF values
-#define DISTANCE_SOURCE_MODE_MAXIMUM    2
+#define DISTANCE_SOURCE_MODE_MINIMUM    0 // Take the minimum of the US and IR or TOF values
+#define DISTANCE_SOURCE_MODE_MAXIMUM    1
+#define DISTANCE_SOURCE_MODE_US         2 // Take just US value
 #define DISTANCE_SOURCE_MODE_IR_OR_TOF  3 // Take just IR or TOF value
 #define DISTANCE_LAST_SOURCE_MODE       DISTANCE_SOURCE_MODE_IR_OR_TOF
 #if !defined(DISTANCE_SOURCE_MODE_DEFAULT)
@@ -142,8 +150,8 @@ extern uint8_t sDistanceSourceMode;
 #define INVALID_DEGREE   127 // To mark non valid DegreeOfDistanceGreaterThanThreshold or DegreeOf2ConsecutiveDistancesGreaterThanTwoThreshold in ForwardDistancesInfoStruct
 
 struct ForwardDistancesInfoStruct {
-    uint8_t RawDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees
-    uint8_t ProcessedDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 20 degrees, invalid if ProcessedDistancesArray[0] == 0
+    uint8_t RawDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 18 degrees
+    uint8_t ProcessedDistancesArray[NUMBER_OF_DISTANCES]; // From 0 (right) to 180 degrees (left) with steps of 18 degrees, invalid if ProcessedDistancesArray[0] == 0
     int8_t DegreeOfDistanceGreaterThanThreshold;
     int8_t DegreeOf2ConsecutiveDistancesGreaterThanTwoThreshold;
     uint8_t MaxDistance;    // Maximum of all distances (index 0 to 9)
@@ -160,7 +168,6 @@ extern ForwardDistancesInfoStruct sForwardDistancesInfo;
 extern uint8_t sRawForwardDistancesArray[3];
 
 extern uint8_t sUSDistanceTimeoutCentimeter;
-extern uint8_t sIROrTofDistanceCentimeter;
 
 #if defined(CAR_HAS_DISTANCE_SERVO)
 extern bool sDoSlowScan;
@@ -176,11 +183,10 @@ void getDistanceModesFromPins();
 bool printDistanceIfChanged(Print *aSerial);
 void playDistanceFeedbackTone(uint8_t aCentimeter);
 unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aWaitForCurrentMeasurementToEnd = false,
-        uint8_t aMinimumUSDistanceForMinimumMode = 0, bool aDoShow = true);
+        uint8_t aMinimumUSDistanceForMinimumMode = 0, bool aDoShowDistanceBar = true);
 
 #if defined(CAR_HAS_DISTANCE_SERVO)
-#define NO_TARGET_FOUND     360     // return value of scanForTargetAndPrint()
-int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance);
+int8_t scanForFollowerTargetDrawLinesAndPrintResult(uint8_t aMaximumTargetDistance);
 void printForwardDistanceInfo(Print *aSerial);
 unsigned int moveServoAndGetDistance(uint8_t aTargetDegrees, uint8_t aDistanceTimeoutCentimeter);
 void DistanceServoWriteAndWaitForStop(uint8_t aValue, bool doDelay = false);

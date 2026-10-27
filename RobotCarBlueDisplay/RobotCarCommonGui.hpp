@@ -82,7 +82,7 @@ void setupGUI(void) {
     sCurrentPage = PAGE_HOME;
 
     /*
-     * Register callback handler and wait for 300 ms if Bluetooth connection is still active.
+     * Register callback handler and wait for 50 to 150 ms if Bluetooth connection is still active.
      * For ESP32 and after power on of the Bluetooth module (HC-05) at other platforms, Bluetooth connection is most likely not active here.
      *
      * If active, mCurrentDisplaySize and mHostUnixTimestamp are set and initDisplay() and drawGui() functions are called.
@@ -133,7 +133,7 @@ void loopGUI(void) {
 
     if (BlueDisplay1.isConnectionEstablished()) {
 #if defined(SHOW_VOLTAGE_ON_DISPLAY)
-        displayChangedSupplyVoltageOnce();
+        displayChangedSupplyVoltage();
 #endif
 
 #if defined(ENABLE_PATH_INFO_PAGE)
@@ -378,7 +378,7 @@ void startCurrentPage() {
     }
 #if defined(SHOW_VOLTAGE_ON_DISPLAY)
     forceDisplayOfVoltage();
-    displayChangedSupplyVoltageOnce();
+    displayChangedSupplyVoltage();
 #endif
 }
 
@@ -416,7 +416,7 @@ void GUISwitchPages(BDButton *aTheTouchedButton, int16_t aValue) {
 #if defined(CAR_SUPPORTS_AUTONOMOUS_DRIVE)
     case PAGE_AUTOMATIC_CONTROL:
         stopAutonomousDrivePage();
-        if(aValue != PAGE_SHOW_PATH){
+        if (aValue != PAGE_SHOW_PATH) {
             startStopRobotCar(false);
         }
         break;
@@ -446,7 +446,7 @@ void initRobotCarDisplay() {
 
     // Lock to landscape layout
     BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_USE_MAX_SIZE | BD_FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE,
-            REMOTE_DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            DISPLAY_WIDTH, DISPLAY_HEIGHT);
     BlueDisplay1.setCharacterMapping(0x87, 0x2227); // mapping for unicode AND used as Forward symbol
     BlueDisplay1.setCharacterMapping(0x88, 0x2228); // mapping for unicode OR used as Backwards symbol
     initCommonGui();
@@ -492,7 +492,7 @@ void initCommonGui() {
 
     SliderSpeedLeft.init(MOTOR_INFO_START_X, 0, BUTTON_WIDTH_16, SPEED_SLIDER_SIZE / 2, SPEED_SLIDER_SIZE / 2 - 1, 0,
             SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
-    SliderSpeedLeft.setValueFormatString("%3d"); // Since we also send values grater 100
+    SliderSpeedLeft.setValueFormatString("%3d"); // Since we also send values greater 100
 
     SliderSpeedRight.init(MOTOR_INFO_START_X + BUTTON_WIDTH_16 + 8, 0, BUTTON_WIDTH_16, SPEED_SLIDER_SIZE / 2,
             SPEED_SLIDER_SIZE / 2 - 1, 0, SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR,
@@ -504,26 +504,27 @@ void initCommonGui() {
      * Right sliders
      * From right to left:
      * 1. Scaled (0 to 180) US position slider
-     * 2. Scaled (0 to 200) small US distance slider. If IR distance or pan and tilt servos existent, the it is a small one without cm units.
+     * 2. Scaled (0 to 200) small US distance slider. If IR distance or pan and tilt servos existent, then it is a small one without cm units.
      * 3. Scaled (0 to 200) small IR distance slider / big US small US distance slider. Not displayed on home page if pan and tilt servos existent.
-     * 3. Pan position slider. If tilt servo is existent then at position 3.
-     * 4. Tilt position slider.
+     * 4. Pan position slider. If tilt servo is existent then at position 3.
+     * 5. Tilt position slider.
      *
      * Position X values determine the RIGHT edge + 1. The width of the slider must be subtracted for SliderX parameter.
      */
-#define POS_X_DISTANCE_POSITION_SLIDER    LAYOUT_320_WIDTH // 320
-#define POS_X_US_DISTANCE_SLIDER    ((POS_X_DISTANCE_POSITION_SLIDER - BUTTON_WIDTH_6) - 2) // - (width of US position slider + 2 for gap)
-#define POS_X_THIRD_SLIDER          (POS_X_US_DISTANCE_SLIDER - (BUTTON_WIDTH_10 / 2))  // - (width of small US distance slider + 2 for gap)
+#define POS_X_RIGHT_OF_DISTANCE_POSITION_SLIDER    LAYOUT_320_WIDTH // 320
+#define POS_X_RIGHT_OF_US_DISTANCE_SLIDER    ((POS_X_RIGHT_OF_DISTANCE_POSITION_SLIDER - BUTTON_WIDTH_6) - 2) // - (width of US position slider + 2 for gap)
+#define POS_X_RIGHT_OF_THIRD_SLIDER          (POS_X_RIGHT_OF_US_DISTANCE_SLIDER - (BUTTON_WIDTH_10 / 2))  // - (width of small US distance slider + 2 for gap)
 
 #if defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)
-#define POS_X_PAN_SLIDER            (POS_X_THIRD_SLIDER)  //
-#define POS_X_TILT_SLIDER           ((POS_X_THIRD_SLIDER - BUTTON_WIDTH_12) - 4) // - width of pan slider + 4 for gap
+#define POS_X_RIGHT_O_PAN_SLIDER            (POS_X_RIGHT_OF_THIRD_SLIDER)  //
+#define POS_X_RIGHT_O_TILT_SLIDER           ((POS_X_RIGHT_OF_THIRD_SLIDER - BUTTON_WIDTH_12) - 4) // - width of pan slider + 4 for gap
 #else
-#define POS_X_PAN_SLIDER            ((POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_10 - 2) // - width of 1 big or 2 small sliders + 2 for gap
+#define POS_X_RIGHT_O_PAN_SLIDER            ((POS_X_RIGHT_OF_US_DISTANCE_SLIDER - BUTTON_WIDTH_10) - 2) // - width of 1 big or 2 small sliders + 2 for gap
 #endif // defined(CAR_HAS_PAN_SERVO) && defined(CAR_HAS_TILT_SERVO)
+#define WIDTH_OF_SMALL_US_SLIDER            ((BUTTON_WIDTH_10 / 2) - 2)
 
 #if defined(CAR_HAS_DISTANCE_SERVO)
-    SliderDistanceServoPosition.init(POS_X_DISTANCE_POSITION_SLIDER - BUTTON_WIDTH_6, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6,
+    SliderDistanceServoPosition.init(POS_X_RIGHT_OF_DISTANCE_POSITION_SLIDER - BUTTON_WIDTH_6, SLIDER_TOP_MARGIN, BUTTON_WIDTH_6,
             US_SLIDER_SIZE, 90, 90, COLOR16_YELLOW, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doUSServoPosition);
     SliderDistanceServoPosition.setBarThresholdColor(COLOR16_BLUE);
     SliderDistanceServoPosition.setMinMaxValue(0, 180); // Values from 0 to 180 degrees
@@ -538,10 +539,9 @@ void initCommonGui() {
      */
 #if defined(US_DISTANCE_SLIDER_IS_SMALL)
     // Small US distance slider with captions and without cm units
-    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_Y_POSITON,
-            (BUTTON_WIDTH_10 / 2) - 2, DISTANCE_SLIDER_SIZE,
-            FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0, SLIDER_DEFAULT_BACKGROUND_COLOR,
-            SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
+    SliderUSDistance.init(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - WIDTH_OF_SMALL_US_SLIDER, SLIDER_Y_POSITON, WIDTH_OF_SMALL_US_SLIDER,
+            DISTANCE_SLIDER_SIZE, FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0,
+            SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
     SliderUSDistance.setCaptionProperties(TEXT_SIZE_10, FLAG_SLIDER_VALUE_CAPTION_ALIGN_LEFT | FLAG_SLIDER_VALUE_CAPTION_BELOW, 2,
             COLOR16_BLACK, COLOR16_WHITE);
     SliderUSDistance.setCaption("US");
@@ -549,8 +549,8 @@ void initCommonGui() {
     SliderUSDistance.setPrintValueProperties(TEXT_SIZE_11, FLAG_SLIDER_VALUE_CAPTION_ALIGN_LEFT | FLAG_SLIDER_VALUE_CAPTION_BELOW,
             4 + TEXT_SIZE_10_HEIGHT, COLOR16_BLACK, COLOR16_WHITE);
 #else
-// Big US distance slider without caption but with cm units POS_X_THIRD_SLIDER because it is the position of the left edge
-    SliderUSDistance.init(POS_X_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_Y_POSITON, BUTTON_WIDTH_10, DISTANCE_SLIDER_SIZE,
+// Big US distance slider without caption but with cm units
+    SliderUSDistance.init(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_Y_POSITON, BUTTON_WIDTH_10, DISTANCE_SLIDER_SIZE,
             FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0, SLIDER_DEFAULT_BACKGROUND_COLOR,
             SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
     SliderUSDistance.setValueUnitString("cm");
@@ -563,10 +563,9 @@ void initCommonGui() {
      */
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
     // Small IR distance slider with captions and without cm units
-    SliderIROrTofDistance.init(POS_X_THIRD_SLIDER - ((BUTTON_WIDTH_10 / 2) - 2), SLIDER_Y_POSITON,
-            (BUTTON_WIDTH_10 / 2) - 2, DISTANCE_SLIDER_SIZE,
-            FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0, SLIDER_DEFAULT_BACKGROUND_COLOR,
-            SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
+    SliderIROrTofDistance.init(POS_X_RIGHT_OF_THIRD_SLIDER - WIDTH_OF_SMALL_US_SLIDER, SLIDER_Y_POSITON, WIDTH_OF_SMALL_US_SLIDER,
+            DISTANCE_SLIDER_SIZE, FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0,
+            SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
     SliderIROrTofDistance.setScaleFactor(DISTANCE_SLIDER_SCALE_FACTOR); // Slider is virtually 2 times larger, values were divided by 2
     SliderIROrTofDistance.setBarThresholdColor(DISTANCE_TIMEOUT_COLOR);
     // Caption properties
@@ -582,7 +581,7 @@ void initCommonGui() {
 
 #if defined(CAR_HAS_PAN_SERVO)
     // left of SliderDistanceServoPosition
-    SliderPan.init(POS_X_PAN_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90,
+    SliderPan.init(POS_X_RIGHT_O_PAN_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90, 90,
             COLOR16_YELLOW, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doHorizontalServoPosition);
     SliderPan.setBarThresholdColor(COLOR16_BLUE);
     // scale slider values
@@ -591,7 +590,7 @@ void initCommonGui() {
 #endif
 
 #if defined(CAR_HAS_TILT_SERVO)
-    SliderTilt.init(POS_X_TILT_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90,
+    SliderTilt.init(POS_X_RIGHT_O_TILT_SLIDER - BUTTON_WIDTH_12, SLIDER_TOP_MARGIN, BUTTON_WIDTH_12, LASER_SLIDER_SIZE, 90,
             TILT_SERVO_MIN_VALUE, COLOR16_YELLOW, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE, &doVerticalServoPosition);
     SliderTilt.setBarThresholdColor(COLOR16_BLUE);
     // scale slider values
@@ -615,7 +614,6 @@ void initCommonGui() {
 
 void drawCommonGui(void) {
     BlueDisplay1.clearDisplay();
-    BlueDisplay1.drawText(HEADER_X, 4, F("Robot Car"), TEXT_SIZE_22, COLOR16_BLUE, COLOR16_NO_BACKGROUND);
 }
 
 void playDoubleTone() {
@@ -636,11 +634,11 @@ void forceDisplayOfVoltage() {
  * Print VIN or VCC if value changed
  * Adjust display position depending on page.
  */
-void displayChangedSupplyVoltageOnce() {
+void displayChangedSupplyVoltage() {
     if (sVoltageHasChanged) {
         sVoltageHasChanged = false; // Print only once
         char tDataBuffer[18];
-        char tVoltageString[5];
+        char tVoltageString[5]; // will overflow on >= 10V -> we assume only 2S Li-ion attached.
 
 #if defined(VIN_ATTENUATED_INPUT_PIN)
         dtostrf(sVINVoltage, 4, 2, tVoltageString);
@@ -702,10 +700,10 @@ void handleUnderVoltage() {
 #if defined(LOCAL_INFO)
             Serial.print(F("Undervoltage detected "));
             printVoltage();
-            delay(VOLTAGE_TOO_LOW_DELAY_OFFLINE_MILLIS - PRINT_VOLTAGE_PERIOD_MILLIS);
 #endif
+            delay(VOLTAGE_TOO_LOW_DELAY_OFFLINE_MILLIS - PRINT_VOLTAGE_PERIOD_MILLIS); // 10 seconds including delay in next line
         }
-        delayMillisAndHandleEvents(PRINT_VOLTAGE_PERIOD_MILLIS); // and wait
+        delayMillisAndHandleEvents (PRINT_VOLTAGE_PERIOD_MILLIS); // and wait
         readAndCheckVoltagePeriodically();
 
     } while (isUnderVoltage());
@@ -750,31 +748,32 @@ void printMotorValuesPeriodically() {
                  * print voltage for left motor PWM
                  * " 2.23V 2.23V"
                  */
-                char tPWMVoltageString[7];
-                tPWMVoltageString[6] = '\0';
-                tPWMVoltageString[5] = 'V';
+                char tPWMVoltageString[6];
+                tPWMVoltageString[5] = '\0';
                 if (RobotCar.leftCarMotor.CurrentCompensatedSpeedPWM != 0) {
-#if defined(MONITOR_VIN_VOLTAGE_ON_DISPLAY)
-            // use current voltage minus bridge loss instead of a constant value
-                dtostrf(PWMDcMotor::getMotorVoltageforPWM(RobotCar.leftCarMotor.CurrentCompensatedSpeedPWM, sVINVoltage) , 4, 2, tPWMVoltageString);
+#if defined(USE_VIN_VOLTAGE_FOR_DISPLAY_OF_PWM_VOLTAGE)
+                    // Use current voltage minus bridge loss instead of a constant value
+                    dtostrf(PWMDcMotor::getMotorVoltageforPWM(RobotCar.leftCarMotor.CurrentCompensatedSpeedPWM, sVINVoltage) , 4, 2, tPWMVoltageString);
 #else
-                    // we can merely use a constant value here
+                    // we can merely use a constant value for supply voltage here
                     dtostrf(PWMDcMotor::getMotorVoltageforPWMAndMillivolt(RobotCar.leftCarMotor.CurrentCompensatedSpeedPWM,
                     FULL_BRIDGE_INPUT_MILLIVOLT), 4, 2, tPWMVoltageString);
 #endif
+                    tPWMVoltageString[4] = 'V';
                     BlueDisplay1.drawText((MOTOR_INFO_START_X + TEXT_SIZE_11_WIDTH) - 1, MOTOR_INFO_START_Y + (2 * TEXT_SIZE_11),
                             tPWMVoltageString);
                 }
 
                 // now for right motor
                 if (RobotCar.rightCarMotor.CurrentCompensatedSpeedPWM != 0) {
-#if defined(MONITOR_VIN_VOLTAGE_ON_DISPLAY)
-                dtostrf(PWMDcMotor::getMotorVoltageforPWM(RobotCar.rightCarMotor.CurrentCompensatedSpeedPWM, sVINVoltage), 4, 2, tPWMVoltageString);
+#if defined(USE_VIN_VOLTAGE_FOR_DISPLAY_OF_PWM_VOLTAGE)
+                    dtostrf(PWMDcMotor::getMotorVoltageforPWM(RobotCar.rightCarMotor.CurrentCompensatedSpeedPWM, sVINVoltage), 4, 2, tPWMVoltageString);
 #else
-                    // we can merely use a constant value here
+                    // we can merely use a constant value for supply voltage here
                     dtostrf(PWMDcMotor::getMotorVoltageforPWMAndMillivolt(RobotCar.rightCarMotor.CurrentCompensatedSpeedPWM,
                     FULL_BRIDGE_INPUT_MILLIVOLT), 4, 2, tPWMVoltageString);
 #endif
+                    tPWMVoltageString[4] = 'V';
                     BlueDisplay1.drawText((MOTOR_INFO_START_X + (7 * TEXT_SIZE_11_WIDTH)) - 3,
                             MOTOR_INFO_START_Y + (2 * TEXT_SIZE_11), tPWMVoltageString);
                 }
@@ -897,20 +896,19 @@ void printIMUOffsetValues() {
 #endif // defined(USE_MPU6050_IMU)
 
 #if defined(CAR_HAS_US_DISTANCE_SENSOR)
-void showUSDistance() {
-    auto tUSDistanceCentimeter = sUSDistanceCentimeter;
-    if (sSliderUSLastCentimeter != tUSDistanceCentimeter) {
-        sSliderUSLastCentimeter = tUSDistanceCentimeter;
-        SliderUSDistance.setValueAndDrawBar(tUSDistanceCentimeter);
+void showUSDistance(uint8_t aUSDistanceCentimeter) {
+    if (sSliderUSLastCentimeter != aUSDistanceCentimeter) {
+        sSliderUSLastCentimeter = aUSDistanceCentimeter;
+        SliderUSDistance.setValueAndDrawBar(aUSDistanceCentimeter);
     }
 }
 #endif
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-void showIROrTofDistance() {
-    if (sLastSliderIROrTofCentimeter != sIROrTofDistanceCentimeter) {
-        sLastSliderIROrTofCentimeter = sIROrTofDistanceCentimeter;
-        SliderIROrTofDistance.setValueAndDrawBar(sIROrTofDistanceCentimeter);
+void showIROrTofDistance(uint8_t aIROrTofDistanceCentimeter) {
+    if (sLastSliderIROrTofCentimeter != aIROrTofDistanceCentimeter) {
+        sLastSliderIROrTofCentimeter = aIROrTofDistanceCentimeter;
+        SliderIROrTofDistance.setValueAndDrawBar(aIROrTofDistanceCentimeter);
     }
 }
 #endif

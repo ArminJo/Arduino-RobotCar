@@ -2,8 +2,9 @@
  * Distance.hpp
  *
  *  Contains all distance measurement functions.
+ *  doWallDetection(): Enhancement of acquired data because of lack of detecting flat surfaces by US at angels out of 70 to 110 degree.
  *
- *  Copyright (C) 2020-2024  Armin Joachimsmeyer
+ *  Copyright (C) 2020-2026  Armin Joachimsmeyer
  *
  *  This file is part of PWMMotorControl https://github.com/ArminJo/PWMMotorControl.
  *  This file is part of Arduino-RobotCar https://github.com/ArminJo/Arduino-RobotCar.
@@ -25,8 +26,9 @@
 #ifndef _ROBOT_CAR_DISTANCE_HPP
 #define _ROBOT_CAR_DISTANCE_HPP
 
-#if !defined(DISTANCE_FEEDBACK_MODE)
-#define DISTANCE_FEEDBACK_MODE  DISTANCE_FEEDBACK_CONTINUOUSLY // Mode if DISTANCE_TONE_FEEDBACK_ENABLE_PIN is LOW, DISTANCE_FEEDBACK_PENTATONIC or DISTANCE_FEEDBACK_CONTINUOUSLY
+#if !defined(DISTANCE_FEEDBACK_MODE_IF_PIN_LOW)
+#define DISTANCE_FEEDBACK_MODE_IF_PIN_LOW  DISTANCE_FEEDBACK_CONTINUOUSLY // Mode if DISTANCE_TONE_FEEDBACK_ENABLE_PIN is LOW.
+//#define DISTANCE_FEEDBACK_MODE_IF_PIN_LOW  DISTANCE_FEEDBACK_PENTATONIC // Mode if DISTANCE_TONE_FEEDBACK_ENABLE_PIN is LOW.
 #endif
 
 #if !defined(DISTANCE_CHANGE_THRESHOLD_CENTIMETER)
@@ -35,6 +37,10 @@
 #include "Distance.h"
 #include "HCSR04.hpp" // include sources
 #include "RobotCarConfigurations.h" // helps the pretty printer / Ctrl F
+
+#if !defined(DISTANCE_TIMEOUT_RESULT)
+#define DISTANCE_TIMEOUT_RESULT                   0
+#endif
 
 #if defined(CAR_HAS_DISTANCE_SERVO)
 #  if defined(USE_LIGHTWEIGHT_SERVO_LIBRARY)
@@ -79,7 +85,6 @@ bool sDoSlowScan = false;
 
 uint8_t sDistanceFeedbackMode = DISTANCE_FEEDBACK_NO_TONE;
 uint8_t sUSDistanceTimeoutCentimeter; // The value to display if sUSDistanceCentimeter == DISTANCE_TIMEOUT_RESULT, we have different timeouts
-uint8_t sIROrTofDistanceCentimeter;
 uint8_t sEffectiveDistanceCentimeter;   // Depends on sDistanceSourceMode
 bool sEffectiveDistanceJustChanged;     // Is set and reset by getDistanceAsCentimeter() and scanTarget()
 
@@ -136,7 +141,7 @@ void playDistanceFeedbackTone(uint8_t aCentimeter) {
      */
     if (sDistanceFeedbackMode != DISTANCE_FEEDBACK_NO_TONE) {
         if (aCentimeter == DISTANCE_TIMEOUT_RESULT) {
-            noTone(BUZZER_PIN);
+            noTone (BUZZER_PIN);
         } else {
             /*
              * Compute frequency
@@ -155,13 +160,13 @@ void playDistanceFeedbackTone(uint8_t aCentimeter) {
                 /*
                  * DISTANCE_FEEDBACK_CONTINUOUSLY. Play feedback tone proportional to measured distance
                  */
-#if defined(FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) && defined(FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER)
-                if (aCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) {
-                    tFrequency = map(aCentimeter, 0, FOLLOWER_DISTANCE_MINIMUM_CENTIMETER, 100, 200);
-                } else if (aCentimeter > FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) {
-                    tFrequency = map(aCentimeter, FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER, 200, 2000, 6000);
+#if defined(FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER) && defined(FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER)
+                if (aCentimeter < FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER) {
+                    tFrequency = map(aCentimeter, 0, FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER, 100, 200);
+                } else if (aCentimeter > FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER) {
+                    tFrequency = map(aCentimeter, FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER, 200, 2000, 6000);
                 } else {
-                    tFrequency = map(aCentimeter, FOLLOWER_DISTANCE_MINIMUM_CENTIMETER, FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER, 440,
+                    tFrequency = map(aCentimeter, FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER, FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER, 440,
                             880); // 1 octaves for gap
                 }
 #else
@@ -177,13 +182,14 @@ void playDistanceFeedbackTone(uint8_t aCentimeter) {
 }
 
 /*
+ * Not used yet
  * Print without a newline
  * @return true if sEffectiveDistanceJustChanged is true, i.e. something was printed
  */
 bool printDistanceIfChanged(Print *aSerial) {
     if (sEffectiveDistanceJustChanged) {
         if (sEffectiveDistanceCentimeter == DISTANCE_TIMEOUT_RESULT) {
-            aSerial->println("Distance timeout ");
+            aSerial->print("Distance timeout ");
         } else {
             aSerial->print("Distance=");
             aSerial->print(sEffectiveDistanceCentimeter);
@@ -198,20 +204,19 @@ bool printDistanceIfChanged(Print *aSerial) {
  * If two sensors are available, sDistanceSourceMode defines, which value to take.
  * Modes are US, IR_OR_TOF, MINIMUM and MAXIMUM. Default is IR_OR_TOF.
  * @param   aDistanceTimeoutCentimeter   - The maximum distance acquired.
- * @param   aWaitForCurrentMeasurmentToEnd   - Used for IR Distance sensors: If true, wait for the current measurement to end, since the sensor was recently moved.
+ * @param   aWaitForCurrentMeasurementToEnd   - Used for IR Distance sensors: If true, wait for the current measurement to end, since the sensor was recently moved.
  * @param   aMinimumUSDistanceForMinimumMode   - In cm. Only for DISTANCE_SOURCE_MODE_MINIMUM. If US distance is lower, take IR Distance.
- * @param   aDoShow   - Show as distance bar(s) on GUI
+ * @param   aDoShowDistanceBar   - Show as distance bar(s) on GUI
  * @return  Distance in centimeter @20 degree celsius (time in us/58.25)
  *          0 / DISTANCE_TIMEOUT_RESULT if timeout or pins are not initialized*
  *          sUSDistanceCentimeter
- *          sIROrTofDistanceCentimeter
  *          sEffectiveDistanceCentimeter
  *          sEffectiveDistanceJustChanged
  *          sUSDistanceTimeoutCentimeter
  */
 unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aWaitForCurrentMeasurementToEnd,
-        uint8_t aMinimumUSDistanceForMinimumMode, bool aDoShow) {
-    (void) aDoShow; // to avoid compiler warnings
+        uint8_t aMinimumUSDistanceForMinimumMode, bool aDoShowDistanceBar) {
+    (void) aDoShowDistanceBar; // to avoid compiler warnings
 
 #if !defined(CAR_HAS_IR_DISTANCE_SENSOR)
     (void) aWaitForCurrentMeasurementToEnd; // suppress compiler warnings
@@ -233,10 +238,9 @@ unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aW
     if (tUSCentimeter == DISTANCE_TIMEOUT_RESULT) {
         tUSCentimeter = aDistanceTimeoutCentimeter;
     }
-    sUSDistanceCentimeter = tUSCentimeter; // overwrite value set by getUSDistanceAsCentimeterWithCentimeterTimeout()
-
 #if (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR))
-    uint8_t tIRCentimeter;
+    uint8_t tIROrTofCentimeter;
+    uint8_t tIROrTofCentimeterWithTimeoutResult;
 #  if !defined(USE_BLUE_DISPLAY_GUI)
     /*
      * Only get IR or TOF distance if used later
@@ -244,28 +248,28 @@ unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aW
     if (sDistanceSourceMode != DISTANCE_SOURCE_MODE_US) {
 #  endif
 #  if defined(CAR_HAS_IR_DISTANCE_SENSOR)
-        tIRCentimeter = getIRDistanceAsCentimeter(aWaitForCurrentMeasurementToEnd);
-        if (tIRCentimeter == DISTANCE_TIMEOUT_RESULT) {
-            tIRCentimeter = aDistanceTimeoutCentimeter;
-        }
-        sIROrTofDistanceCentimeter = tIRCentimeter;
+        tIROrTofCentimeterWithTimeoutResult = getIRDistanceAsCentimeter(aWaitForCurrentMeasurementToEnd);
+    if (tIROrTofCentimeterWithTimeoutResult == DISTANCE_TIMEOUT_RESULT) {
+        tIROrTofCentimeter = aDistanceTimeoutCentimeter;
+    } else {
+        tIROrTofCentimeter = tIROrTofCentimeterWithTimeoutResult;
+    }
 
 #  elif defined(CAR_HAS_TOF_DISTANCE_SENSOR)
-        tIRCentimeter = readToFDistanceAsCentimeter();
-        sIROrTofDistanceCentimeter = tIRCentimeter;
+        tIROrTofCentimeter = readToFDistanceAsCentimeter();
 #  endif
 #  if !defined(USE_BLUE_DISPLAY_GUI)
     }
 #  else
 
-    if (aDoShow) {
+    if (aDoShowDistanceBar) {
         /*
          * Show distances as bars on GUI
          */
 #    if defined(CAR_HAS_US_DISTANCE_SENSOR)
-        showUSDistance();       // Here we have a dedicated US distance bar
+        showUSDistance(tUSCentimeter); // Here we have a dedicated US distance bar
 #    endif
-        showIROrTofDistance();  // Here we always have IR or TOF sensor bar
+        showIROrTofDistance(tIROrTofCentimeter);  // Here we always have IR or TOF sensor bar
     }
 #  endif // !defined(USE_BLUE_DISPLAY_GUI)
 
@@ -273,23 +277,26 @@ unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aW
      * IR or TOF sensor is used, we check for distance source mode
      * (take IR or minimum or maximum of the US and (IR or TOF) values)
      */
-    uint8_t tCentimeterToReturn = sUSDistanceCentimeter; // using sUSDistanceCentimeter here instead of tUSCentimeter saves 6 bytes
+    uint8_t tCentimeterToReturn = sUSDistanceCentimeter; // sUSDistanceCentimeter has value DISTANCE_TIMEOUT_RESULT on timeout :-)
     if (sDistanceSourceMode == DISTANCE_SOURCE_MODE_IR_OR_TOF) {
-        tCentimeterToReturn = tIRCentimeter;
+        tCentimeterToReturn = tIROrTofCentimeterWithTimeoutResult;
     } else if (sDistanceSourceMode == DISTANCE_SOURCE_MODE_MINIMUM) {
         // Scan mode MINIMUM => Take the minimum of the US and IR or TOF values
-        if (tCentimeterToReturn > tIRCentimeter || tCentimeterToReturn <= aMinimumUSDistanceForMinimumMode) {
-            tCentimeterToReturn = tIRCentimeter;
+        // Return DISTANCE_TIMEOUT_RESULT if both have timeout
+        // We assume that if tUSCentimeter <= aMinimumUSDistanceForMinimumMode, then IR distance also has no timeout
+        if (tUSCentimeter > tIROrTofCentimeter || tUSCentimeter <= aMinimumUSDistanceForMinimumMode) {
+            tCentimeterToReturn = tIROrTofCentimeterWithTimeoutResult;
         }
-    } else {
-        // Scan mode MAXIMUM => Take the maximum of the US and IR or TOF values
-        if (tCentimeterToReturn < tIRCentimeter) {
-            tCentimeterToReturn = tIRCentimeter;
+    } else if (sDistanceSourceMode == DISTANCE_SOURCE_MODE_MAXIMUM) {
+        // Scan mode MAXIMUM => Take the maximum of the US and IR or TOF values.
+        // Return DISTANCE_TIMEOUT_RESULT if both have timeout
+        if (tCentimeterToReturn < tIROrTofCentimeter) {
+            tCentimeterToReturn = tIROrTofCentimeterWithTimeoutResult;
         }
     }
 #else
 #  if defined(USE_BLUE_DISPLAY_GUI) && defined(CAR_HAS_US_DISTANCE_SENSOR)
-    showUSDistance();       // Here we have a dedicated US distance bar
+    showUSDistance(tUSCentimeter);       // Here we have a dedicated US distance bar
 #  endif
     uint8_t tCentimeterToReturn = tUSCentimeter;
 #endif // (defined(CAR_HAS_IR_DISTANCE_SENSOR) || defined(CAR_HAS_TOF_DISTANCE_SENSOR))
@@ -305,9 +312,6 @@ unsigned int getDistanceAsCentimeter(uint8_t aDistanceTimeoutCentimeter, bool aW
 }
 
 #if defined(CAR_HAS_IR_DISTANCE_SENSOR)
-#if !defined(DISTANCE_TIMEOUT_RESULT)
-#define DISTANCE_TIMEOUT_RESULT                   0
-#endif
 /**
  * The Sharp 1080 takes 39 ms for each measurement cycle
  * @return     DISTANCE_TIMEOUT_RESULT on values > IR_SENSOR_TIMEOUT_CENTIMETER
@@ -331,19 +335,15 @@ uint8_t getIRDistanceAsCentimeter(bool aWaitForCurrentMeasurementToEnd) {
         } while (millis() - tStartMillis <= IR_SENSOR_MEASUREMENT_TIME_MILLIS);
         // now a new measurement has started, wait for the result
 #if defined(USE_BLUE_DISPLAY_GUI)
-        delayAndLoopGUI(IR_SENSOR_NEW_MEASUREMENT_THRESHOLD); // the IR sensor takes 39 ms for one measurement
+        delayAndLoopGUI(IR_SENSOR_MEASUREMENT_TIME_MILLIS); // the IR sensor takes 39 ms for one measurement
 #  else
-        delay(IR_SENSOR_NEW_MEASUREMENT_THRESHOLD); // the IR sensor takes 39 ms for one measurement
+        delay(IR_SENSOR_MEASUREMENT_TIME_MILLIS); // the IR sensor takes 39 ms for one measurement
 #  endif
     }
 
     float tVolt = analogRead(IR_DISTANCE_SENSOR_PIN); // 100 us
     // tVolt * 0.004887585 = 5(V) for tVolt == 1023
-#  if defined(IR_SENSOR_TYPE_100550)
-    uint16_t tDistanceCentimeter;
-#  else
-    uint8_t tDistanceCentimeter;
-#  endif
+    uint16_t tDistanceCentimeter; // uint16_t to avoid most overflow in casting from float to integer
 #  if defined(IR_SENSOR_TYPE_430) // 4 to 30 cm, 18 ms, GP2YA41SK0F
     tDistanceCentimeter =  (12.08 * pow(tVolt * 0.004887585, -1.058)) + 0.5; // see https://github.com/guillaume-rico/SharpIR/blob/master/SharpIR.cpp
     if(tDistanceCentimeter > IR_SENSOR_TIMEOUT_CENTIMETER) { //35 cm
@@ -408,12 +408,11 @@ uint8_t readToFDistanceAsCentimeter() {
     if (tStatus != 0) {
         if (tStatus == 4) {
             // Wrap around in mode short -> more than 130 cm
-            tDistance = 1300;
+            tDistance = DISTANCE_TIMEOUT_RESULT;
         } else {
-            tDistance = 10;
+            tDistance = DISTANCE_TIMEOUT_RESULT; // may change in the future
         }
     }
-//    tone(SPEAKER_PIN, tDistance + 500);
     return tDistance / 10;
 }
 
@@ -430,32 +429,23 @@ uint8_t getToFDistanceAsCentimeter() {
  */
 unsigned int moveServoAndGetDistance(uint8_t aTargetDegrees, uint8_t aDistanceTimeoutCentimeter) {
     DistanceServoWriteAndWaitForStop(aTargetDegrees, true);
-    return getDistanceAsCentimeter(aDistanceTimeoutCentimeter, true);
+    return getDistanceAsCentimeter(aDistanceTimeoutCentimeter, true, 0, true);
 }
 
 //#define USE_OVERSHOOT_FOR_FAST_SERVO_MOVING
 /**
- * Handles overflow, no movement
- * servo trim value, servo mounted head down, and then does a Servo.write().
- * Overshoot handling is is still experimental and disabled by default.
- * If doWaitForStop a trailing delay of 8 or 16 times delta degree depending on value of sDoSlowScan.
+ * Handles overflow, no movement, servo trim value, servo mounted head down, and then does a Servo.write().
+ * Overshoot handling is still experimental and disabled by default.
+ * If doWaitForStop is true, then a trailing delay of 8 or 16 times delta degree depending on value of sDoSlowScan is introduced.
  * Sets and uses sLastDistanceServoAngleInDegrees to enable optimized servo movement and delay.
  *
  * SG90 Micro Servo has reached its end position if the current (200 mA) is low for more than 11 to 14 ms
  * No action if aTargetDegrees == sLastDistanceServoAngleInDegrees
- * @param aTargetDegrees    0 is left, 180 is right
+ * @param aTargetDegrees    0 is right, 180 is left
  */
 void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop) {
     if (sLastDistanceServoAngleInDegrees == aTargetDegrees) {
         return;
-    }
-
-    if (aTargetDegrees > 220) {
-        // handle underflow
-        aTargetDegrees = 0;
-    } else if (aTargetDegrees > 180) {
-        // handle overflow
-        aTargetDegrees = 180;
     }
 
     uint8_t tDeltaDegrees;
@@ -492,15 +482,24 @@ void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop
         aTargetDegrees += tOvershootDegrees;
     }
 #endif
+
 #if defined(DISTANCE_SERVO_TRIM_DEGREE)
-    aTargetDegrees += DISTANCE_SERVO_TRIM_DEGREE;
+    aTargetDegrees += DISTANCE_SERVO_TRIM_DEGREE; // he we may have underflow
 #endif
+
+    if (aTargetDegrees > 220) {
+        // handle underflow
+        aTargetDegrees = 0;
+    } else if (aTargetDegrees > 180) {
+        // handle overflow
+        aTargetDegrees = 180;
+    }
+
 #if defined(DISTANCE_SERVO_IS_MOUNTED_HEAD_DOWN)
     // The servo is top down and therefore inverted
     aTargetDegrees = 180 - aTargetDegrees;
 #endif
     DistanceServo.write(aTargetDegrees);
-
 
     /*
      * Delay until stopped
@@ -525,11 +524,7 @@ void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop
 #if defined(USE_OVERSHOOT_FOR_FAST_SERVO_MOVING)
             tWaitDelayforServo = tDeltaDegrees * 5;
 #else
-#  if defined(CAR_HAS_IR_DISTANCE_SENSOR)  // TODO really required?
-            tWaitDelayforServo = tDeltaDegrees * 9; // 9 => 162 ms for 18 degrees
-#  else
             tWaitDelayforServo = tDeltaDegrees * 8; // 7 => 128|140 ms, 8 => 144|160 for 18|20 degrees
-#  endif
 #endif
         }
 #if defined(USE_BLUE_DISPLAY_GUI)
@@ -544,7 +539,7 @@ void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop
  * Scan 70 (right), 90 and 110 (left) degree and return NextDegreesToTurn.
  * Around 330 ms for 20 degree per scan step in fast mode.
  * If BlueDisplay GUI is enabled, display values, otherwise print them.
- * If we get a different distance than last time, we let the LED_BUILTIN flash and read again.
+ * - currently disabled - If we get a different distance than last time, we let the LED_BUILTIN flash and read again.
  * @param   aMaximumTargetDistance  - Distances above are taken as timeouts (but displayed by GUI).
  *                                  - Must be < FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER, otherwise timeout is handled as found.
  * @return  0 -> no turn, positive -> turn left (counterclockwise), negative -> turn right
@@ -552,7 +547,7 @@ void DistanceServoWriteAndWaitForStop(uint8_t aTargetDegrees, bool doWaitForStop
  *          sComputedRotation is set.
  *          sRawForwardDistancesArray[] contains values between 1 and FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER
  */
-int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
+int8_t scanForFollowerTargetDrawLinesAndPrintResult(uint8_t aMaximumTargetDistance) {
     uint8_t tCentimeter;
     uint8_t tServoDegreeToScan;
     int8_t tDeltaDegree;
@@ -581,7 +576,7 @@ int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
     for (uint_fast8_t i = 0; i < sizeof(sRawForwardDistancesArray); ++i) {
         /*
          * Get distance
-         * Here we allow greater values than max target distance, because they are displayed or converted to a tone
+         * Here we allow greater values than max target discovery distance, because they are displayed or can be converted to a tone
          * Using a constant timeout saves 36 bytes
          */
         tCentimeter = moveServoAndGetDistance(tServoDegreeToScan, FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER);
@@ -619,21 +614,23 @@ int8_t scanForTargetAndPrint(uint8_t aMaximumTargetDistance) {
              * Determine color and draw distance line
              */
             color16_t tColor;
-            tColor = COLOR16_CYAN; // 40 < tCentimeter <= 60
-            if (tCentimeter <= FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER) {
-                tColor = COLOR16_GREEN;
-            } else if (tCentimeter < FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) {
-                tColor = COLOR16_YELLOW;
-            } else if (tCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) {
-                tColor = COLOR16_YELLOW;
+            tColor = DISTANCE_TIMEOUT_COLOR; // cyan > 70 cm
+            if (tCentimeter <= FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER) {
+                tColor = COLOR16_GREEN;  // 30 < tCentimeter <= 70 / DISTANCE_TO_GREAT
+            }
+            if (tCentimeter < FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER) {
+                tColor = COLOR16_YELLOW; // 22 < tCentimeter < 30 / DISTANCE_OK
+            }
+            if (tCentimeter < FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER) {
+                tColor = COLOR16_RED; // tCentimeter < 22 / DISTANCE_TO_SMALL
             }
 
             // Clear old line - use drawVectorDegreeWithAliasing to be able to clear line without residual
             BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y,
                     sRawForwardDistancesArray[tIndex], tServoDegreeToScan, COLOR16_WHITE, 3);
             // draw new one and store value in distances array for clearing at next scan
-            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tCentimeter, tServoDegreeToScan,
-                    tColor, 3);
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tCentimeter,
+                    tServoDegreeToScan, tColor, 3);
             sRawForwardDistancesArray[tIndex] = tCentimeter;
         }
 #endif
@@ -725,27 +722,30 @@ void printForwardDistanceInfo(Print *aSerial) {
     }
 }
 
+/*
+ * @return  DISTANCE_TO_SMALL for 1 to 21, DISTANCE_OK for 22 to 29, DISTANCE_TO_GREAT for 30 to 70 and DISTANCE_TARGET_NOT_FOUND else
+ */
 distance_range_t getDistanceRange(uint8_t aCentimeter) {
-    if (aCentimeter < FOLLOWER_DISTANCE_MINIMUM_CENTIMETER) {
+    if (aCentimeter < FOLLOWER_DISTANCE_MINIMUM_OK_CENTIMETER) {
         return DISTANCE_TO_SMALL;
     }
-    if (aCentimeter < FOLLOWER_DISTANCE_MAXIMUM_CENTIMETER) {
+    if (aCentimeter < FOLLOWER_DISTANCE_MAXIMUM_OK_CENTIMETER) {
         return DISTANCE_OK;
     }
-    if (aCentimeter < FOLLOWER_TARGET_DISTANCE_TIMEOUT_CENTIMETER) {
+    if (aCentimeter <= FOLLOWER_DISTANCE_MAXIMUM_DISCOVERY_CENTIMETER) {
         return DISTANCE_TO_GREAT;
     }
     return DISTANCE_TARGET_NOT_FOUND;
 }
 
-const char RangeCharacterArray[] = { '=', '<', '>', '!' };
+const char RangeCharacterArray[] = { '=', '>', '<', ' ', '!' };
 void printDistanceRangeCharacter(Print *aSerial, distance_range_t aRange) {
     aSerial->print(RangeCharacterArray[aRange]);
 }
 
 #if defined(USE_BLUE_DISPLAY_GUI)
 /**
- * Get 7 distances starting at 9 degrees (right) increasing by 18 degrees up to 171 degrees (left)
+ * Get 10 distances starting at 9 degrees (right) increasing by 18 degrees up to 171 degrees (left)
  * Avoid 0 and 180 degrees since at this position the US sensor might see the wheels of the car as an obstacle.
  * @param aDoFirstValue if false, skip first value since it is the same as last value of last measurement in continuous mode.
  *
@@ -754,7 +754,7 @@ void printDistanceRangeCharacter(Print *aSerial, distance_range_t aRange) {
  * then assume a wall which cannot reflect the pulse for the surrounding values.
  *
  * @param aDoFirstValue Get also first value, i.e. do a complete scan
- * @param aForceScan    If true, do not prematurely return if stop was requested i.e. sRuningAutonomousDrive is false
+ * @param aForceScan    If true, do not prematurely return if stop was requested
  * @return true if user cancellation requested.
  */
 bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan) {
@@ -824,8 +824,8 @@ bool fillAndShowForwardDistancesInfo(bool aDoFirstValue, bool aForceScan) {
              */
             BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y,
                     sForwardDistancesInfo.RawDistancesArray[tIndex], tCurrentDegrees, COLOR16_WHITE, 3);
-            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tCentimeter, tCurrentDegrees, tColor,
-                    3);
+            BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tCentimeter,
+                    tCurrentDegrees, tColor, 3);
         }
 
         sForwardDistancesInfo.RawDistancesArray[tIndex] = tCentimeter;
@@ -865,7 +865,8 @@ void drawForwardDistancesInfos() {
         /*
          * Draw line
          */
-        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tDistance, tCurrentDegrees, tColor, 3);
+        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tDistance, tCurrentDegrees,
+                tColor, 3);
         tCurrentDegrees += DEGREES_PER_STEP;
     }
 }
@@ -1027,8 +1028,8 @@ void doWallDetection() {
                 tNextDistanceOriginal = tNextDistanceComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                 if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                    BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tNextDistanceComputed,
-                            tCurrentAngleToCheck, COLOR16_WHITE, 1);
+                    BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y,
+                            tNextDistanceComputed, tCurrentAngleToCheck, COLOR16_WHITE, 1);
                 }
 #endif
             }
@@ -1068,7 +1069,7 @@ void doWallDetection() {
                 AUTONOMOUS_DRIVE_DISTANCE_TIMEOUT_CENTIMETER, &tDegreeOfConnectingLine);
 #if defined(FUNCTION_TRACE) && defined(USE_BLUE_DISPLAY_GUI)
                 BlueDisplay1.debug("i=", i);
-                BlueDisplay1.debug("AngleToCheck @i+1=", tCurrentAngleToCheck);
+                BlueDisplay1.debug("AngleToCheck @i-1=", tCurrentAngleToCheck);
                 BlueDisplay1.debug("Original distance @i-1=", tNextValue);
                 BlueDisplay1.debug("New distance @i-1=", tNextValueComputed);
                 BlueDisplay1.debug("Connecting degrees @i-1=", tDegreeOfConnectingLine);
@@ -1089,9 +1090,9 @@ void doWallDetection() {
 #endif
                         }
                     } else if (sForwardDistancesInfo.WallLeftAngleDegrees < (180 - tWallBackwardDegrees)) {
-                        // wall at right - overwrite only if greater
+                        // wall at left - overwrite only if greater
                         sForwardDistancesInfo.WallLeftAngleDegrees = 180 - tWallBackwardDegrees;
-#if defined(TRACE) && defined(USE_BLUE_DISPLAY_GUI)
+#if defined(FUNCTION_TRACE) && defined(USE_BLUE_DISPLAY_GUI)
                         BlueDisplay1.debug("WallLeftAngleDegrees=", sForwardDistancesInfo.WallLeftAngleDegrees);
 #endif
 
@@ -1101,8 +1102,8 @@ void doWallDetection() {
                     tNextValue = tNextValueComputed;
 #if defined(USE_BLUE_DISPLAY_GUI)
                     if (sCurrentPage == PAGE_AUTOMATIC_CONTROL) {
-                        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y, tNextValueComputed,
-                                tCurrentAngleToCheck, COLOR16_WHITE, 1);
+                        BlueDisplay1.drawVectorDegreeWithAliasing(US_DISTANCE_MAP_START_X, US_DISTANCE_MAP_START_Y,
+                                tNextValueComputed, tCurrentAngleToCheck, COLOR16_WHITE, 1);
                     }
 #endif
                 }
@@ -1182,10 +1183,10 @@ void getDistanceModesFromPins() {
         sDistanceSourceMode = DISTANCE_SOURCE_MODE_IR_OR_TOF;
     }
 #  endif
-#  if defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) && defined(DISTANCE_FEEDBACK_MODE) && !defined(ENABLE_DISTANCE_FEEDBACK_MODE_GUI)
+#  if defined(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) && defined(DISTANCE_FEEDBACK_MODE_IF_PIN_LOW) && !defined(ENABLE_DISTANCE_FEEDBACK_MODE_GUI)
     // If this pin is connected to ground, enable distance feedback. Not required, if we have a GUI for it :-).
     if (digitalRead(DISTANCE_TONE_FEEDBACK_ENABLE_PIN) == LOW) {
-        sDistanceFeedbackMode = DISTANCE_FEEDBACK_MODE;
+        sDistanceFeedbackMode = DISTANCE_FEEDBACK_MODE_IF_PIN_LOW;
     } else {
         sDistanceFeedbackMode = DISTANCE_FEEDBACK_NO_TONE;
         noTone(BUZZER_PIN);
