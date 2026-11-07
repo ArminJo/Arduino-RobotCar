@@ -151,7 +151,7 @@ void loopMotion();
  * Settings to configure the BlueDisplay library and to reduce its size
  */
 //#define BLUETOOTH_BAUD_RATE BAUD_115200  // Activate this, if you have reprogrammed the HC05 module for 115200, otherwise 9600 is used as baud rate
-#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // Disables unused basic touch events down, move and up. Saves 620 bytes program memory and 36 bytes RAM
+#define DO_NOT_NEED_BASIC_TOUCH_EVENTS // Disables unused basic touch events down, move and up. Saves 170 bytes program memory and 14 bytes RAM
 #define DO_NOT_NEED_LONG_TOUCH_DOWN_AND_SWIPE_EVENTS  // Disables LongTouchDown and SwipeEnd events. Saves up to 88 bytes program memory and 4 bytes RAM.
 #include "BlueDisplay.hpp"          // include source of library
 #if !defined(USE_BLUE_DISPLAY_GUI)

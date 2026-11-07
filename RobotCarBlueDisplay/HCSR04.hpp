@@ -235,9 +235,11 @@ unsigned int getUSDistanceAsCentimeterWithCentimeterTimeout(unsigned int aTimeou
 }
 
 /**
+ * Uses sLastUSDistanceMeasurementMillis and sLastUSDistanceCentimeter.
  * @return  HCSR04_DISTANCE_NO_MEASUREMENT if periodically timeout not reached
  *          HCSR04_MEASUREMENT_AND_DISTANCE_HAS_CHANGED or HCSR04_MEASUREMENT_AND_DISTANCE_HAS_NOT_CHANGED
  *          if measurement was taken
+ *          Distance is "returned" in sUSDistanceCentimeter
  */
 uint8_t getUSDistanceAsCentimeterWithCentimeterTimeoutPeriodicallyAndPrintIfChanged(unsigned int aTimeoutCentimeter,
         unsigned int aMillisBetweenMeasurements, Print *aSerial) {

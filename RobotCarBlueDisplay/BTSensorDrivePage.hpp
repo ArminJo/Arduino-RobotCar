@@ -175,7 +175,8 @@ void doSensorChange(uint8_t aSensorType, struct SensorCallback *aSensorCallbackI
         if (tSpeedPWM > MAX_SPEED_PWM) {
             tSpeedPWM = MAX_SPEED_PWM;
         }
-        RobotCar.setSpeedPWMAndDirection(tSpeedPWM, tDirection);
+        setClippedSpeedPWMAndDirection(tSpeedPWM, tDirection);
+
 #else //defined(CAR_HAS_4_MECANUM_WHEELS)
 
         /*

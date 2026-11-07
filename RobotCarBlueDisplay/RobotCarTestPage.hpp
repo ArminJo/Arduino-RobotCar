@@ -88,7 +88,6 @@ void doRotation(BDButton *aTheTouchedButton, int16_t aValue) {
     }
 }
 
-
 /*
  * Callback handler for user speed input
  * Store user speed input as DriveSpeed
@@ -105,14 +104,12 @@ void doStoreSpeed(float aValue) {
     printMotorValuesPeriodically();
 }
 
-
 /*
  * Request speed value as number from user
  */
-void doGetSpeedAsNumber(BDButton * aTheTouchedButton, int16_t aValue) {
+void doGetSpeedAsNumber(BDButton *aTheTouchedButton, int16_t aValue) {
     BlueDisplay1.getNumberWithShortPrompt(&doStoreSpeed, "Drive speed [11-255]", sLastSpeedSliderValue);
 }
-
 
 /*
  * replacing parameter init with structure init INCREASES code size by 82 bytes
@@ -127,8 +124,8 @@ void initTestPage(void) {
     /*
      * Control buttons
      */
-    TouchButtonReset.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4,
-    COLOR16_BLUE, F("Reset"), TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset);
+    TouchButtonReset.init(BUTTON_WIDTH_3_POS_2, BUTTON_HEIGHT_4_LINE_4, BUTTON_WIDTH_3, BUTTON_HEIGHT_4, COLOR16_BLUE, F("Reset"),
+            TEXT_SIZE_22, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doReset);
 
 #if defined(ENABLE_EEPROM_STORAGE)
     TouchButtonGetAndStoreSpeed.init(0, BUTTON_HEIGHT_4_LINE_4 - BUTTON_HEIGHT_6 - BUTTON_DEFAULT_SPACING_QUARTER, BUTTON_WIDTH_6,
@@ -139,14 +136,14 @@ void initTestPage(void) {
      * Many calls requires 36 bytes code + sometimes 52 bytes to clean up the stack.
      */
     TouchButton5cm.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE, F("5cm"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 50, &doDistance);
+            TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 50, &doDistance);
     TouchButton10cm.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_2, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE, F("10cm"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 100, &doDistance);
+            TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 100, &doDistance);
 
     TouchButton20cm.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE, F("20cm"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 200, &doDistance);
+            TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 200, &doDistance);
     TouchButton40cm.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE, F("40cm"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 400, &doDistance);
+            TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 400, &doDistance);
 
 //    TouchButtonReset.init(&ButtonReset, F("Reset"));
 //    TouchButton5cm.init(&Button5cm, F("5cm"));
@@ -157,7 +154,7 @@ void initTestPage(void) {
 //    TouchButtonInfo.init(&ButtonDebug, F("dbg"));
 
     TouchButtonTest.init(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_RED, F("Test"),
-    TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doTest);
+            TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 0, &doTest);
 
     TouchButton45DegreeLeft.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_BLUE,
             F("45\xB0"), TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH, 45, &doRotation); // \xB0 is degree character
@@ -192,7 +189,7 @@ void drawTestPage(void) {
 //#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
     TouchButtonCalibrate.drawButton();
 //#endif
-
+    TouchButtonDemoSpeed.drawButton();
     TouchButton20cm.drawButton();
     TouchButton40cm.drawButton();
     TouchButtonTest.drawButton();
@@ -243,11 +240,22 @@ void startTestPage(void) {
         calibrateDriveSpeedPWMAndPrint();
     }
 #endif
+    TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_6);
+    TouchButtonInfo.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4);
+//#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
+    TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2);
+//#endif
 }
 
 void loopTestPage(void) {
 }
 
 void stopTestPage(void) {
+    TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5);
+    TouchButtonInfo.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5);
+
+//#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
+    TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3);
+//#endif
 }
 #endif // _ROBOT_CAR_TEST_PAGE_HPP

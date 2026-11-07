@@ -46,6 +46,9 @@ BDButton TouchButtonCompensationLeft;
 BDButton TouchButtonCalibrate;
 bool isPWMCalibrated = false;
 //#endif
+BDButton TouchButtonDemoSpeed;
+bool sUseNotReducedDemoSpeed = true; // Controls reduced demo speed e.g. to avoid crashes if children tilt the sensor too much
+#define MAX_REDUCED_SPEED_PWM   80 // Empiric value
 
 #if defined(ENABLE_EEPROM_STORAGE)
 BDButton TouchButtonCompensationStore;
@@ -203,12 +206,14 @@ void startStopRobotCar(bool aDoStart) {
                 // If slider was not touched before
                 sLastSpeedSliderValue = RobotCar.rightCarMotor.DriveSpeedPWMFor2Volt / 2;
             }
+            tSpeedSliderValue = sLastSpeedSliderValue;
+
             /*
              * Start car to last speed slider value
              */
-            RobotCar.setSpeedPWMAndDirection(sLastSpeedSliderValue, sRobotCarDirection);
-            tSpeedSliderValue = sLastSpeedSliderValue;
+            setClippedSpeedPWMAndDirection(sLastSpeedSliderValue, sRobotCarDirection);
         }
+
     } else {
         /*
          * Stop car
@@ -304,6 +309,21 @@ void doCalibrate(BDButton *aTheTouchedButton, int16_t aValue) {
 }
 
 /*
+ * Toggle reduced demo speed value
+ */
+void doDemoSpeed(BDButton *aTheTouchedButton, int16_t aValue) {
+    sUseNotReducedDemoSpeed = aValue;
+}
+
+void setClippedSpeedPWMAndDirection(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection) {
+    // apply clipping for reduced demo speed
+    if (!sUseNotReducedDemoSpeed && aRequestedSpeedPWM > MAX_REDUCED_SPEED_PWM) {
+        aRequestedSpeedPWM = MAX_REDUCED_SPEED_PWM;
+    }
+    RobotCar.setSpeedPWMAndDirection(aRequestedSpeedPWM, aRequestedDirection);
+}
+
+/*
  * Minimum Speed is 30 for USB power and no load, 50 for load
  * Minimum Speed is 20 for 2 Lithium 18650 battery power and no load, 25 for load
  */
@@ -315,7 +335,7 @@ void doSpeedSlider(BDSlider *aTheTouchedSlider, int16_t aValue) {
             // handle GUI
             startStopRobotCar(true);
         } else {
-            RobotCar.setSpeedPWMAndDirection(aValue, sRobotCarDirection);
+            setClippedSpeedPWMAndDirection(aValue, sRobotCarDirection);
         }
     }
 }
@@ -444,7 +464,7 @@ void GUISwitchPages(BDButton *aTheTouchedButton, int16_t aValue) {
 
 void initRobotCarDisplay() {
 
-    // Lock to landscape layout
+// Lock to landscape layout
     BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_USE_MAX_SIZE | BD_FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE,
             DISPLAY_WIDTH, DISPLAY_HEIGHT);
     BlueDisplay1.setCharacterMapping(0x87, 0x2227); // mapping for unicode AND used as Forward symbol
@@ -465,6 +485,9 @@ void initCommonGui() {
 
     TouchButtonCalibrate.init(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_RED, F("CAL"),
             TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE, false, &doCalibrate);
+
+    TouchButtonDemoSpeed.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_3, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_RED,
+            F("Demo\nspeed"), TEXT_SIZE_9, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE, sUseNotReducedDemoSpeed, &doDemoSpeed);
 
     TouchButtonInfo.init(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5, BUTTON_WIDTH_8, BUTTON_HEIGHT_8, COLOR16_RED, F("Info"),
             TEXT_SIZE_11, FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE, sShowInfo, &doToggleInfo); //
@@ -550,9 +573,9 @@ void initCommonGui() {
             4 + TEXT_SIZE_10_HEIGHT, COLOR16_BLACK, COLOR16_WHITE);
 #else
 // Big US distance slider without caption but with cm units
-    SliderUSDistance.init(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_Y_POSITON, BUTTON_WIDTH_10, DISTANCE_SLIDER_SIZE,
-            FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0, SLIDER_DEFAULT_BACKGROUND_COLOR,
-            SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
+    SliderUSDistance.init(POS_X_RIGHT_OF_US_DISTANCE_SLIDER - BUTTON_WIDTH_10, SLIDER_Y_POSITON, BUTTON_WIDTH_10,
+            DISTANCE_SLIDER_SIZE, FOLLOWER_DISPLAY_DISTANCE_TIMEOUT_CENTIMETER / DISTANCE_SLIDER_SCALE_FACTOR, 0,
+            SLIDER_DEFAULT_BACKGROUND_COLOR, SLIDER_DEFAULT_BAR_COLOR, FLAG_SLIDER_SHOW_VALUE | FLAG_SLIDER_IS_ONLY_OUTPUT);
     SliderUSDistance.setValueUnitString("cm");
 #endif
     SliderUSDistance.setScaleFactor(DISTANCE_SLIDER_SCALE_FACTOR); // Slider is virtually 2 times larger, values were divided by 2
@@ -675,7 +698,7 @@ void displayChangedSupplyVoltage() {
  * Endless loop until undervoltage vanishes
  */
 void handleUnderVoltage() {
-    // Here 3 consecutive times (for 6 seconds) low voltage detected
+// Here 3 consecutive times (for 6 seconds) low voltage detected
     playDoubleTone();
     startStopRobotCar(false);
 

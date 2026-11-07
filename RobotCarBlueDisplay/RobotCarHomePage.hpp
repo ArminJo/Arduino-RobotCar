@@ -154,6 +154,7 @@ void drawHomePage(void) {
 //#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
     TouchButtonCalibrate.drawButton();
 //#endif
+    TouchButtonDemoSpeed.drawButton();
     TouchButtonCompensationLeft.drawButton();
     TouchButtonCompensationRight.drawButton();
 #if defined(ENABLE_EEPROM_STORAGE)
@@ -187,11 +188,6 @@ void drawHomePage(void) {
  * Reset slider positions moved by sub pages
  */
 void startHomePage(void) {
-    TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_5);
-    TouchButtonInfo.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5);
-//#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
-    TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_5, BUTTON_HEIGHT_8_LINE_3);
-//#endif
 #if defined(CAR_HAS_TILT_SERVO) && defined(ENABLE_EEPROM_STORAGE)
     TouchButtonCompensationStore.setPosition(BUTTON_WIDTH_8_POS_4, BUTTON_HEIGHT_8_LINE_5);
 #endif
@@ -212,11 +208,6 @@ void loopHomePage(void) {
 }
 
 void stopHomePage(void) {
-    TouchButtonDirection.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_6);
-    TouchButtonInfo.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4);
-//#if defined(USE_ENCODER_MOTOR_CONTROL) || defined(USE_MPU6050_IMU)
-    TouchButtonCalibrate.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_2);
-//#endif
 #if defined(CAR_HAS_TILT_SERVO) && defined(ENABLE_EEPROM_STORAGE)
     TouchButtonCompensationStore.setPosition(BUTTON_WIDTH_8_POS_6, BUTTON_HEIGHT_8_LINE_4);
 #endif

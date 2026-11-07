@@ -165,6 +165,8 @@ void calibrateRotation();
 #endif
 void displayRotationValues();
 void doCalibrate(BDButton *aTheTouchedButton, int16_t aValue);
+void doDemoSpeed(BDButton *aTheTouchedButton, int16_t aValue);
+void setClippedSpeedPWMAndDirection(uint8_t aRequestedSpeedPWM, uint8_t aRequestedDirection) ;
 
 extern BDButton TouchButtonCompensationRight;
 extern BDButton TouchButtonCompensationLeft;
